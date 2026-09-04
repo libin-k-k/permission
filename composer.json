@@ -1,6 +1,6 @@
 {
     "name": "libinkk/permission",
-    "description": "Production-grade Laravel authorization engine with RBAC, ABAC, resource authorization, multi-tenancy, hierarchical scopes, and explainable decisions.",
+    "description": "Production-grade Laravel authorization engine with RBAC, ABAC, multi-tenancy, temporary access, delegation, audit logs, and explainable decisions.",
     "keywords": [
         "libinkk",
         "laravel",
@@ -11,7 +11,9 @@
         "acl",
         "roles",
         "permissions",
-        "multi-tenancy"
+        "multi-tenancy",
+        "delegation",
+        "audit"
     ],
     "type": "library",
     "license": "MIT",

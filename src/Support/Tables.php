@@ -81,4 +81,19 @@ final class Tables
     {
         return self::get('tenant_users', 'tenant_users');
     }
+
+    public static function permissionDelegations(): string
+    {
+        return self::get('permission_delegations', 'permission_delegations');
+    }
+
+    public static function permissionVersions(): string
+    {
+        return self::get('permission_versions', 'permission_versions');
+    }
+
+    public static function authorizationAudits(): string
+    {
+        return self::get('authorization_audits', 'authorization_audits');
+    }
 }

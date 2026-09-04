@@ -2,6 +2,7 @@
 
 namespace Libinkk\Permission\Concerns;
 
+use DateTimeInterface;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Arr;
@@ -12,6 +13,8 @@ use Libinkk\Permission\Authorization\AuthorizationEngine as Engine;
 use Libinkk\Permission\Authorization\Decision;
 use Libinkk\Permission\Contracts\AuthorizationEngine;
 use Libinkk\Permission\Contracts\PermissionCache;
+use Libinkk\Permission\Delegation\Delegation;
+use Libinkk\Permission\Delegation\DelegationManager;
 use Libinkk\Permission\Events\PermissionGranted;
 use Libinkk\Permission\Events\PermissionRevoked;
 use Libinkk\Permission\Events\RoleAssigned;
@@ -52,9 +55,10 @@ trait HasAuthorization
 
     public function assignRole(mixed ...$roles): static
     {
+        [$roles, $options] = $this->extractAssignmentOptions($roles);
         [$roles, $scope] = $this->extractScopeArgument($roles);
         $guard = $this->authorizationGuard();
-        $pivot = $this->assignmentPivot($this->scopePivot($scope));
+        $pivot = $this->assignmentPivot(array_merge($this->scopePivot($scope), $options));
 
         foreach ($this->normalizeRoles($roles, $guard) as $role) {
             $this->roles()->syncWithoutDetaching([
@@ -105,11 +109,12 @@ trait HasAuthorization
 
     public function syncRoles(mixed ...$roles): static
     {
+        [$roles, $options] = $this->extractAssignmentOptions($roles);
         [$roles, $scope] = $this->extractScopeArgument($roles);
         $guard = $this->authorizationGuard();
         $models = $this->normalizeRoles($roles, $guard);
         $sync = [];
-        $pivot = $this->assignmentPivot($this->scopePivot($scope));
+        $pivot = $this->assignmentPivot(array_merge($this->scopePivot($scope), $options));
 
         foreach ($models as $role) {
             $sync[$role->getKey()] = $pivot;
@@ -203,14 +208,45 @@ trait HasAuthorization
         return $this;
     }
 
+    public function delegate(
+        string $permission,
+        mixed $to,
+        mixed $until = null,
+        mixed $startsAt = null,
+        mixed $scope = null,
+        mixed $resource = null,
+        ?string $reason = null,
+    ): Delegation {
+        return app(DelegationManager::class)->create(
+            from: $this,
+            to: $to,
+            permission: $permission,
+            until: $until,
+            startsAt: $startsAt,
+            scope: $scope,
+            resource: $resource,
+            reason: $reason,
+        );
+    }
+
+    public function revokeDelegation(Delegation|int|string $delegation, ?string $reason = null): Delegation
+    {
+        $model = $delegation instanceof Delegation
+            ? $delegation
+            : Delegation::query()->findOrFail($delegation);
+
+        return app(DelegationManager::class)->revoke($model, $reason);
+    }
+
     /**
      * @param  array<int, string|Permission|array>  $permissions
      */
     protected function assignPermissionEffect(array $permissions, string $effect): static
     {
+        [$permissions, $options] = $this->extractAssignmentOptions($permissions);
         [$permissions, $scope] = $this->extractScopeArgument($permissions);
         $guard = $this->authorizationGuard();
-        $pivot = $this->assignmentPivot(array_merge($this->scopePivot($scope), ['effect' => $effect]));
+        $pivot = $this->assignmentPivot(array_merge($this->scopePivot($scope), ['effect' => $effect], $options));
 
         foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
             $this->permissions()->syncWithoutDetaching([
@@ -438,9 +474,35 @@ trait HasAuthorization
         return [$items, AuthorizationContext::currentTarget()];
     }
 
+    /**
+     * @param  array<int|string, mixed>  $items
+     * @return array{0: array<int, mixed>, 1: array<string, mixed>}
+     */
+    protected function extractAssignmentOptions(array $items): array
+    {
+        $keys = [
+            'expiresAt' => 'expires_at',
+            'expires_at' => 'expires_at',
+            'startsAt' => 'starts_at',
+            'starts_at' => 'starts_at',
+            'until' => 'expires_at',
+        ];
+
+        $options = [];
+
+        foreach ($items as $key => $value) {
+            if (is_string($key) && isset($keys[$key])) {
+                $options[$keys[$key]] = $value;
+                unset($items[$key]);
+            }
+        }
+
+        return [array_values($items), $options];
+    }
+
     protected function isScopeArgument(mixed $value): bool
     {
-        if ($value instanceof Role || $value instanceof Permission || is_string($value) || is_array($value)) {
+        if ($value instanceof Role || $value instanceof Permission || $value instanceof DateTimeInterface || is_string($value) || is_array($value)) {
             return false;
         }
 

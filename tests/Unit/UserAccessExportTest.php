@@ -34,6 +34,8 @@ class UserAccessExportTest extends TestCase
         $this->assertGreaterThanOrEqual(4, $export['totals']['effective_permissions']);
         $this->assertArrayHasKey('Posts', $export['by_group']);
         $this->assertArrayHasKey('posts', $export['by_resource']);
+        $this->assertArrayHasKey('temporary', $export);
+        $this->assertArrayHasKey('delegations', $export);
         $this->assertNotEmpty($user->exportAccessJson());
     }
 

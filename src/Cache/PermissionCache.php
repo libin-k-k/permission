@@ -32,7 +32,7 @@ class PermissionCache implements PermissionCacheContract
      */
     protected array $computing = [];
 
-    public function remember(string $key, string $ttlType, Closure $callback): mixed
+    public function remember(string $key, string $ttlType, Closure $callback, bool $persistent = true): mixed
     {
         if (array_key_exists($key, $this->request)) {
             return $this->request[$key];
@@ -45,7 +45,7 @@ class PermissionCache implements PermissionCacheContract
         $this->computing[$key] = true;
 
         try {
-            if (! $this->enabled() || isset($this->dirty[$key])) {
+            if (! $this->enabled() || isset($this->dirty[$key]) || ! $persistent) {
                 return $this->request[$key] = $callback();
             }
 

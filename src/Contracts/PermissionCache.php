@@ -6,7 +6,7 @@ use Closure;
 
 interface PermissionCache
 {
-    public function remember(string $key, string $ttlType, Closure $callback): mixed;
+    public function remember(string $key, string $ttlType, Closure $callback, bool $persistent = true): mixed;
 
     public function get(string $key, bool $persistent = true): mixed;
 

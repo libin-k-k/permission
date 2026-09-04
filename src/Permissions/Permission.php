@@ -4,6 +4,7 @@ namespace Libinkk\Permission\Permissions;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -31,6 +32,8 @@ class Permission extends Model
         'metadata' => 'array',
     ];
 
+    public ?string $versionReason = null;
+
     protected static function booted(): void
     {
         static::saving(function (self $permission) {
@@ -52,11 +55,15 @@ class Permission extends Model
         static::created(function (self $permission) {
             app(PermissionCache::class)->forgetPermission($permission->name);
             event(new PermissionCreated($permission));
+            app(PermissionVersioner::class)->snapshot($permission, $permission->versionReason ?? 'created');
+            $permission->versionReason = null;
         });
 
         static::updated(function (self $permission) {
             app(PermissionCache::class)->forgetPermission($permission->name);
             event(new PermissionUpdated($permission));
+            app(PermissionVersioner::class)->snapshot($permission, $permission->versionReason ?? 'updated');
+            $permission->versionReason = null;
         });
 
         static::deleted(function (self $permission) {
@@ -78,6 +85,24 @@ class Permission extends Model
             'permission_id',
             'role_id'
         )->withPivot('effect');
+    }
+
+    public function versions(): HasMany
+    {
+        return $this->hasMany(PermissionVersion::class, 'permission_id');
+    }
+
+    /**
+     * @return array{permission: string, versions: list<array<string, mixed>>, audits: list<array<string, mixed>>}
+     */
+    public function history(): array
+    {
+        return app(PermissionHistory::class)->for($this);
+    }
+
+    public function rollbackTo(int $version, ?string $reason = null): self
+    {
+        return app(PermissionVersioner::class)->rollback($this, $version, $reason);
     }
 
     /**

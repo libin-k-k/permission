@@ -1,6 +1,6 @@
 # libinkk/permission
 
-**Production-grade Laravel authorization engine** with RBAC, resource permissions, wildcards, explainable decisions, Artisan tooling, Gate/middleware/Blade integration, and layered caching.
+**Production-grade Laravel authorization engine** with RBAC, ABAC, multi-tenancy, temporary access, delegation, audit logs, explainable decisions, and layered caching.
 
 > Authorization that explains itself.
 
@@ -101,8 +101,14 @@ $user->explain('posts.delete');
 
 ## Features
 
-### Available now (v0.4)
+### Available now (v0.5)
 
+- **Temporary access** — `$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7))`
+- **Scheduled grants** — `startsAt` / `expiresAt` on user permissions and roles
+- **Delegation** — `$user->delegate('invoice.approve', to: $manager, until: now()->addHours(4))`
+- **Audit log** — append-only `authorization_audits` (off by default)
+- **Permission versioning** — snapshots on create/update, `$permission->rollbackTo(1)`
+- **Permission history** — `$permission->history()` (versions + related audits)
 - **Multi-tenancy** — tenant-scoped roles, isolation, optional package `tenants` table
 - **Hierarchical scopes** — organization → workspace → project via `scopes.parent_id`
 - **Authorization context** — `AuthorizationContext::tenant()` / `switch()` / `scope()`
@@ -118,7 +124,7 @@ $user->explain('posts.delete');
 - **Wildcards** — `posts.*`, `posts.view.*` resolve at decision time
 - **Discovery** — PHP `#[Permission]` attributes + `permission:discover` / `sync`
 - **Artisan DX** — install, resource, discover, sync, validate, doctor, cache, export
-- **User access export** — `$user->exportAccess()` / `permission:export`
+- **User access export** — `$user->exportAccess()` / `permission:export` (includes temporary + delegations)
 - **Laravel Gate** — `Gate::before` integration for managed abilities
 - **Middleware** — `permission:` and `role:` (configurable AND/OR)
 - **Blade** — `@can`, `@role`, `@canall`
@@ -127,7 +133,7 @@ $user->explain('posts.delete');
 - **Multi-guard** — `guard_name` on roles/permissions and users
 - **Configurable keys** — `bigint`, UUID, or ULID
 - **Testing helpers** — `Permission::fake()`, `assertCan` / `assertCannot`
-- **Events** — role/permission lifecycle and grant/revoke/assign events
+- **Events** — role/permission lifecycle, grant/revoke, delegation, policy, decisions
 
 ### Roadmap
 
@@ -137,7 +143,7 @@ $user->explain('posts.delete');
 | **v0.2** | Resources, groups, wildcards, Artisan, discovery, validate, doctor, user export ✅ |
 | **v0.3** | Conditions, ABAC, ownership, role hierarchy, explicit deny, explanation ✅ |
 | **v0.4** | Tenants, hierarchical scopes, authorization context ✅ |
-| **v0.5** | Temporary access, delegation, audit logs, versioning |
+| **v0.5** | Temporary access, delegation, audit logs, versioning ✅ |
 | **v0.6** | Vue / React adapters, authorization API payloads |
 | **v0.7** | Optional Filament adapter (`libinkk/permission-filament`) |
 | **v0.8+** | Debugger, graph, unused permissions, performance & security hardening |
@@ -273,6 +279,51 @@ AuthorizationContext::scope($workspace);
 
 Global roles (`assignRole('super-admin')` with no tenant) apply across tenants only when `permission.teams.global_roles.cross_tenant` is true.
 
+### Temporary access
+
+```php
+$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7));
+$user->givePermissionTo(
+    'reports.export',
+    startsAt: now()->addDay(),
+    expiresAt: now()->addWeek()
+);
+$user->assignRole('contractor', expiresAt: now()->addHours(4));
+
+$user->can('reports.export'); // false after expiry — reason EXPIRED_PERMISSION
+```
+
+### Delegation
+
+The delegator must currently hold the permission. Expired and revoked delegations never authorize. If the delegator later loses the permission, the delegatee loses it too (no privilege escalation).
+
+```php
+$delegation = $user->delegate(
+    'invoice.approve',
+    to: $manager,
+    until: now()->addHours(4),
+    reason: 'On leave',
+    resource: $invoice, // optional: only this resource
+);
+
+$user->revokeDelegation($delegation);
+```
+
+### Audit, history, versioning
+
+```php
+// config/permission.php
+'audit' => [
+    'enabled' => true,    // assignment + delegation + policy events
+    'decisions' => false, // also log every can() — off by default
+],
+
+$permission->history();       // versions + related audits
+$permission->rollbackTo(1);   // restore snapshot v1
+```
+
+Audit rows are append-only (no soft deletes).
+
 ---
 
 ## Roles & permissions API
@@ -300,8 +351,10 @@ $user->hasAnyRole('editor', 'admin');
 $user->hasAllRoles('editor', 'author');
 
 $user->givePermissionTo('reports.export');
+$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7));
 $user->revokePermissionTo('reports.export');
 $user->syncPermissions(['reports.export']);
+$user->delegate('invoice.approve', to: $manager, until: now()->addHours(4));
 
 $user->can('posts.update');
 $user->canAny(['posts.view', 'posts.create']);
@@ -521,7 +574,9 @@ return [
     'teams' => ['enabled' => false],
     'hierarchy' => ['enabled' => false],
     'deny' => ['enabled' => false],
-    'audit' => ['enabled' => false],
+    'delegation' => ['enabled' => true],
+    'versioning' => ['enabled' => true],
+    'audit' => ['enabled' => false, 'decisions' => false],
     'frontend' => ['enabled' => false],
     'filament' => ['enabled' => false],
 ];
@@ -548,8 +603,11 @@ Core tables created by the package migration:
 | `scopes` | Hierarchical authorization boundaries |
 | `role_scopes` / `permission_scopes` / `user_scopes` | Scope membership |
 | `tenants` / `tenant_users` | Optional package-owned tenants (off by default) |
+| `permission_delegations` | Temporary delegated access (`pending` / `active` / `expired` / `revoked`) |
+| `permission_versions` | Permission definition snapshots for history and rollback |
+| `authorization_audits` | Append-only authorization and assignment history |
 
-Soft deletes apply to roles and permissions only — never use soft deletes for audit history (when audit lands).
+Soft deletes apply to roles and permissions only — never to audit rows.
 
 ---
 
@@ -562,6 +620,8 @@ Soft deletes apply to roles and permissions only — never use soft deletes for 
 | `RoleAssigned` / `RoleRemoved` | User role changes |
 | `PermissionGranted` / `PermissionRevoked` | User direct permission changes |
 | `AuthorizationAllowed` / `AuthorizationDenied` | Decision outcomes (when emitted by the engine path) |
+| `DelegationCreated` / `DelegationRevoked` | Delegation lifecycle |
+| `PolicyChanged` | Permission definition snapshot / rollback |
 
 ---
 
@@ -624,16 +684,18 @@ vendor/bin/phpunit
 ```text
 src/
 ├── Attributes/      PHP #[Permission] attribute
-├── Authorization/   Engine, Context, Decision, Precedence, UserAccessExporter
+├── Authorization/   Engine, Context, Decision, Precedence, ExpirationChecker, UserAccessExporter
 ├── Roles/           Role, RoleManager, RoleHierarchy
 ├── Scopes/          Scope, ScopeResolver, ScopeHierarchy, Tenant
-├── Permissions/     Permission, PermissionDefinition, Manager, Registry, Resolver
+├── Permissions/     Permission, versions, history, Manager, Registry, Resolver
 ├── Conditions/      Condition, ConditionRegistry, ConditionResolver, OwnershipChecker
+├── Delegation/      Delegation, DelegationManager
+├── Audit/           AuthorizationAudit, AuditLogger
 ├── Discovery/       AttributeScanner, PermissionDiscovery
 ├── Cache/           PermissionCache, DecisionCache, PermissionFake
 ├── Commands/        Artisan DX commands
 ├── Concerns/        HasAuthorization
-├── Contracts/       Engine, repositories, cache
+├── Contracts/       Engine, repositories, cache, AuditLogger
 ├── Events/
 ├── Middleware/
 ├── Providers/

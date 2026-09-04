@@ -29,6 +29,9 @@ return [
         'user_scopes' => 'user_scopes',
         'tenants' => 'tenants',
         'tenant_users' => 'tenant_users',
+        'permission_delegations' => 'permission_delegations',
+        'permission_versions' => 'permission_versions',
+        'authorization_audits' => 'authorization_audits',
     ],
 
     'database' => [
@@ -47,6 +50,7 @@ return [
             'user_roles' => 3600,
             'user_permissions' => 3600,
             'scopes' => 1800,
+            'delegations' => 1800,
             'decisions' => 300,
         ],
         'decision_cache' => [
@@ -107,8 +111,17 @@ return [
         'attribute' => null, // e.g. author_id; null = try common fields
     ],
 
+    'delegation' => [
+        'enabled' => true,
+    ],
+
+    'versioning' => [
+        'enabled' => true,
+    ],
+
     'audit' => [
         'enabled' => false,
+        'decisions' => false,
     ],
 
     'frontend' => [

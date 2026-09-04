@@ -38,8 +38,12 @@ class PermissionDoctor
             $this->tableCheck(Tables::userPermissions()),
             $this->tableCheck(Tables::get('scopes', 'scopes')),
             $this->tableCheck(Tables::get('user_scopes', 'user_scopes')),
+            $this->tableCheck(Tables::permissionDelegations()),
+            $this->tableCheck(Tables::permissionVersions()),
+            $this->tableCheck(Tables::authorizationAudits()),
             $this->cacheCheck(),
             $this->indexHint(),
+            $this->expiredDelegationsCheck(),
         ];
 
         foreach ($validation['errors'] as $error) {
@@ -128,6 +132,28 @@ class PermissionDoctor
     protected function indexHint(): array
     {
         return $this->ok('Core authorization tables reachable');
+    }
+
+    /**
+     * @return array{status: string, label: string}
+     */
+    protected function expiredDelegationsCheck(): array
+    {
+        if (! Schema::hasTable(Tables::permissionDelegations())) {
+            return $this->warn('Delegation table missing');
+        }
+
+        $expired = (int) DB::table(Tables::permissionDelegations())
+            ->where('status', 'active')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now())
+            ->count();
+
+        if ($expired > 0) {
+            return $this->warn("{$expired} expired delegations still marked active");
+        }
+
+        return $this->ok('No stale expired delegations');
     }
 
     /**

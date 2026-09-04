@@ -6,7 +6,9 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Libinkk\Permission\Audit\AuditLogger;
 use Libinkk\Permission\Authorization\AuthorizationEngine;
+use Libinkk\Permission\Authorization\ExpirationChecker;
 use Libinkk\Permission\Authorization\UserAccessExporter;
 use Libinkk\Permission\Cache\DecisionCache;
 use Libinkk\Permission\Cache\PermissionCache;
@@ -24,17 +26,30 @@ use Libinkk\Permission\Conditions\Condition;
 use Libinkk\Permission\Conditions\ConditionRegistry;
 use Libinkk\Permission\Conditions\ConditionResolver;
 use Libinkk\Permission\Conditions\OwnershipChecker;
+use Libinkk\Permission\Contracts\AuditLogger as AuditLoggerContract;
 use Libinkk\Permission\Contracts\AuthorizationEngine as AuthorizationEngineContract;
 use Libinkk\Permission\Contracts\PermissionCache as PermissionCacheContract;
 use Libinkk\Permission\Contracts\PermissionRepository as PermissionRepositoryContract;
 use Libinkk\Permission\Contracts\RoleRepository as RoleRepositoryContract;
+use Libinkk\Permission\Delegation\DelegationManager;
+use Libinkk\Permission\Events\AuthorizationAllowed;
+use Libinkk\Permission\Events\AuthorizationDenied;
+use Libinkk\Permission\Events\DelegationCreated;
+use Libinkk\Permission\Events\DelegationRevoked;
+use Libinkk\Permission\Events\PermissionGranted;
+use Libinkk\Permission\Events\PermissionRevoked;
+use Libinkk\Permission\Events\PolicyChanged;
+use Libinkk\Permission\Events\RoleAssigned;
+use Libinkk\Permission\Events\RoleRemoved;
 use Libinkk\Permission\Discovery\AttributeScanner;
 use Libinkk\Permission\Discovery\PermissionDiscovery;
 use Libinkk\Permission\Middleware\PermissionMiddleware;
 use Libinkk\Permission\Middleware\RoleMiddleware;
+use Libinkk\Permission\Permissions\PermissionHistory;
 use Libinkk\Permission\Permissions\PermissionManager;
 use Libinkk\Permission\Permissions\PermissionRegistry;
 use Libinkk\Permission\Permissions\PermissionResolver;
+use Libinkk\Permission\Permissions\PermissionVersioner;
 use Libinkk\Permission\Repositories\EloquentPermissionRepository;
 use Libinkk\Permission\Repositories\EloquentRoleRepository;
 use Libinkk\Permission\Roles\RoleHierarchy;
@@ -71,6 +86,12 @@ class PermissionServiceProvider extends ServiceProvider
         $this->app->singleton(PermissionValidator::class);
         $this->app->singleton(PermissionDoctor::class);
         $this->app->singleton(UserAccessExporter::class);
+        $this->app->singleton(DelegationManager::class);
+        $this->app->singleton(ExpirationChecker::class);
+        $this->app->singleton(PermissionVersioner::class);
+        $this->app->singleton(PermissionHistory::class);
+        $this->app->singleton(AuditLogger::class);
+        $this->app->singleton(AuditLoggerContract::class, fn ($app) => $app->make(AuditLogger::class));
 
         $this->app->singleton(AuthorizationEngineContract::class, AuthorizationEngine::class);
     }
@@ -88,6 +109,7 @@ class PermissionServiceProvider extends ServiceProvider
         $this->registerGate();
         $this->registerMiddleware();
         $this->registerBlade();
+        $this->registerAuditListeners();
         $this->registerOctaneFlush();
     }
 
@@ -163,6 +185,21 @@ class PermissionServiceProvider extends ServiceProvider
 
             return $user && method_exists($user, 'canAll') && $user->canAll((array) $permissions);
         });
+    }
+
+    protected function registerAuditListeners(): void
+    {
+        $events = $this->app->make('events');
+
+        $events->listen(PermissionGranted::class, [AuditLogger::class, 'handlePermissionGranted']);
+        $events->listen(PermissionRevoked::class, [AuditLogger::class, 'handlePermissionRevoked']);
+        $events->listen(RoleAssigned::class, [AuditLogger::class, 'handleRoleAssigned']);
+        $events->listen(RoleRemoved::class, [AuditLogger::class, 'handleRoleRemoved']);
+        $events->listen(DelegationCreated::class, [AuditLogger::class, 'handleDelegationCreated']);
+        $events->listen(DelegationRevoked::class, [AuditLogger::class, 'handleDelegationRevoked']);
+        $events->listen(PolicyChanged::class, [AuditLogger::class, 'handlePolicyChanged']);
+        $events->listen(AuthorizationAllowed::class, [AuditLogger::class, 'handleAuthorizationAllowed']);
+        $events->listen(AuthorizationDenied::class, [AuditLogger::class, 'handleAuthorizationDenied']);
     }
 
     protected function registerOctaneFlush(): void

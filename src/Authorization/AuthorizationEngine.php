@@ -6,6 +6,7 @@ use Libinkk\Permission\Cache\DecisionCache;
 use Libinkk\Permission\Cache\PermissionFake;
 use Libinkk\Permission\Conditions\ConditionResolver;
 use Libinkk\Permission\Contracts\AuthorizationEngine as AuthorizationEngineContract;
+use Libinkk\Permission\Delegation\DelegationManager;
 use Libinkk\Permission\Permissions\PermissionResolver;
 use Libinkk\Permission\Scopes\ScopeResolver;
 use Throwable;
@@ -19,6 +20,8 @@ class AuthorizationEngine implements AuthorizationEngineContract
         protected DecisionCache $decisions,
         protected ConditionResolver $conditions,
         protected ScopeResolver $scopes,
+        protected DelegationManager $delegations,
+        protected ExpirationChecker $expirations,
     ) {
     }
 
@@ -147,11 +150,35 @@ class AuthorizationEngine implements AuthorizationEngineContract
         $entry = $this->resolver->matchPermission($map, $permission);
 
         if ($entry === null) {
+            $delegation = $this->delegations->activeFor($user, $permission, $resource);
+
+            if ($delegation !== null) {
+                $entry = [
+                    'effect' => 'allow',
+                    'source' => 'delegation',
+                    'role' => null,
+                    'layer' => Precedence::EXPLICIT_ALLOW,
+                    'matched' => $delegation['permission'],
+                    'via' => 'delegation',
+                    'delegation_id' => $delegation['id'],
+                ];
+            }
+        }
+
+        if ($entry === null) {
+            $reason = $this->missingReason($user);
+
+            if ($this->expirations->expiredGrantExists($user, $permission, $guard)) {
+                $reason = DecisionReason::EXPIRED_PERMISSION;
+            } elseif ($this->delegations->expiredFor($user, $permission, $resource)) {
+                $reason = DecisionReason::DELEGATION_EXPIRED;
+            }
+
             $decision = Decision::deny(
                 permission: $permission,
                 user: $user,
                 resource: $resource,
-                reason: $this->missingReason($user),
+                reason: $reason,
                 source: 'engine',
                 checks: [
                     'permission' => false,
@@ -159,6 +186,8 @@ class AuthorizationEngine implements AuthorizationEngineContract
                     'wildcard' => false,
                     'conditions' => null,
                     'tenant' => AuthorizationContext::currentTarget() !== null,
+                    'expired' => $reason === DecisionReason::EXPIRED_PERMISSION,
+                    'delegation' => $reason === DecisionReason::DELEGATION_EXPIRED,
                 ],
             );
         } elseif (Precedence::isDeny($entry['layer']) || ($entry['effect'] ?? 'allow') === 'deny') {
@@ -222,12 +251,14 @@ class AuthorizationEngine implements AuthorizationEngineContract
                         'matched' => $entry['matched'],
                         'via' => $entry['via'],
                         'layer' => $entry['layer'],
+                        'delegation_id' => $entry['delegation_id'] ?? null,
                     ],
                     checks: [
                         'permission' => true,
                         'role' => ($entry['role'] ?? null) !== null,
                         'wildcard' => str_starts_with($entry['via'], 'wildcard'),
                         'conditions' => $conditionResult['results'] === [] ? null : true,
+                        'delegation' => ($entry['source'] ?? null) === 'delegation',
                     ],
                 );
                 $decision->conditions = $conditionResult['results'];
@@ -236,7 +267,13 @@ class AuthorizationEngine implements AuthorizationEngineContract
 
         $decision->scope = $scopeLabel;
 
-        if (! $hasDynamicConditions) {
+        $ephemeral = ($decision->source === 'delegation')
+            || in_array($decision->reason, [
+                DecisionReason::EXPIRED_PERMISSION,
+                DecisionReason::DELEGATION_EXPIRED,
+            ], true);
+
+        if (! $hasDynamicConditions && ! $ephemeral) {
             $this->decisions->put($cacheKey, $decision, $context->hasResource());
         }
 

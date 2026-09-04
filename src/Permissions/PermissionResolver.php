@@ -2,12 +2,14 @@
 
 namespace Libinkk\Permission\Permissions;
 
+use Illuminate\Support\Facades\DB;
 use Libinkk\Permission\Authorization\Precedence;
 use Libinkk\Permission\Contracts\PermissionCache;
 use Libinkk\Permission\Contracts\PermissionRepository;
 use Libinkk\Permission\Contracts\RoleRepository;
 use Libinkk\Permission\Roles\RoleHierarchy;
 use Libinkk\Permission\Scopes\ScopeResolver;
+use Libinkk\Permission\Support\Tables;
 use Libinkk\Permission\Support\WildcardMatcher;
 
 class PermissionResolver
@@ -69,7 +71,8 @@ class PermissionResolver
                 }
 
                 return $map;
-            }
+            },
+            persistent: ! $this->hasExpiringAssignments($user)
         );
     }
 
@@ -87,7 +90,8 @@ class PermissionResolver
         return $this->cache->remember(
             "user:{$userKey}:tenant:{$scopeSalt}:roles:{$generation}",
             'user_roles',
-            fn () => $this->roles->assignedRoles($user, $guard, $scopePivots)
+            fn () => $this->roles->assignedRoles($user, $guard, $scopePivots),
+            persistent: ! $this->hasExpiringAssignments($user)
         );
     }
 
@@ -208,5 +212,49 @@ class PermissionResolver
         if (Precedence::rank($entry['layer']) < Precedence::rank($map[$name]['layer'])) {
             $map[$name] = $entry;
         }
+    }
+
+    /**
+     * Temporary grants must not live in L2 after they expire.
+     */
+    protected function hasExpiringAssignments(object $user): bool
+    {
+        if (! method_exists($user, 'getMorphClass') || ! method_exists($user, 'getKey')) {
+            return false;
+        }
+
+        $type = $user->getMorphClass();
+        $id = $user->getKey();
+        $now = now();
+
+        $expiringPermissions = DB::table(Tables::userPermissions())
+            ->where('user_type', $type)
+            ->where('user_id', $id)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', $now)
+            ->exists();
+
+        if ($expiringPermissions) {
+            return true;
+        }
+
+        $expiringRoles = DB::table(Tables::userRoles())
+            ->where('user_type', $type)
+            ->where('user_id', $id)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', $now)
+            ->exists();
+
+        if ($expiringRoles) {
+            return true;
+        }
+
+        return DB::table(Tables::permissionDelegations())
+            ->where('to_user_type', $type)
+            ->where('to_user_id', $id)
+            ->where('status', '!=', 'revoked')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', $now)
+            ->exists();
     }
 }

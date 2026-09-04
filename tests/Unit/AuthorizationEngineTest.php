@@ -90,7 +90,8 @@ class AuthorizationEngineTest extends TestCase
 
         app(\Libinkk\Permission\Contracts\PermissionCache::class)->forgetUser($user);
 
-        $this->assertCannot($user, 'posts.create');
+        $decision = $this->assertCannot($user, 'posts.create');
+        $this->assertSame(DecisionReason::EXPIRED_PERMISSION, $decision->reason);
     }
 
     public function test_can_any_and_can_all(): void

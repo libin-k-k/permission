@@ -3,14 +3,18 @@
 namespace Libinkk\Permission\Authorization;
 
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Libinkk\Permission\Delegation\DelegationManager;
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Permissions\PermissionResolver;
+use Libinkk\Permission\Support\Tables;
 use Libinkk\Permission\Support\WildcardMatcher;
 
 class UserAccessExporter
 {
     public function __construct(
         protected PermissionResolver $resolver,
+        protected DelegationManager $delegations,
     ) {
     }
 
@@ -61,6 +65,9 @@ class UserAccessExporter
 
         $byGroup = $this->groupPermissions(array_keys($effective), $registry, 'group');
         $byResource = $this->groupPermissions(array_keys($effective), $registry, 'resource');
+        $temporary = $this->temporaryAssignments($user);
+        $received = $this->delegations->received($user);
+        $granted = $this->delegations->granted($user);
 
         return [
             'user' => [
@@ -75,6 +82,11 @@ class UserAccessExporter
             'denials' => $denials,
             'assigned_permissions' => $assigned,
             'effective_permissions' => $effective,
+            'temporary' => $temporary,
+            'delegations' => [
+                'received' => $received,
+                'granted' => $granted,
+            ],
             'by_group' => $byGroup,
             'by_resource' => $byResource,
             'totals' => [
@@ -84,6 +96,8 @@ class UserAccessExporter
                 'assigned_permissions' => count($assigned),
                 'role_permissions' => $rolePermissionCount,
                 'effective_permissions' => count($effective),
+                'temporary' => count($temporary),
+                'delegations' => count($received),
                 'groups' => count($byGroup),
                 'resources' => count($byResource),
             ],
@@ -193,6 +207,68 @@ class UserAccessExporter
         }
 
         return $grouped;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function temporaryAssignments(object $user): array
+    {
+        if (! method_exists($user, 'getMorphClass') || ! method_exists($user, 'getKey')) {
+            return [];
+        }
+
+        $now = now();
+        $permissions = Tables::permissions();
+        $userPermissions = Tables::userPermissions();
+        $roles = Tables::roles();
+        $userRoles = Tables::userRoles();
+
+        $direct = DB::table($userPermissions)
+            ->join($permissions, "{$permissions}.id", '=', "{$userPermissions}.permission_id")
+            ->where("{$userPermissions}.user_type", $user->getMorphClass())
+            ->where("{$userPermissions}.user_id", $user->getKey())
+            ->whereNotNull("{$userPermissions}.expires_at")
+            ->get([
+                "{$permissions}.name",
+                "{$userPermissions}.effect",
+                "{$userPermissions}.starts_at",
+                "{$userPermissions}.expires_at",
+            ])
+            ->map(fn ($row) => [
+                'type' => 'permission',
+                'name' => (string) $row->name,
+                'effect' => (string) ($row->effect ?: 'allow'),
+                'starts_at' => $row->starts_at,
+                'expires_at' => $row->expires_at,
+                'active' => ($row->starts_at === null || $row->starts_at <= $now)
+                    && $row->expires_at > $now,
+            ])
+            ->all();
+
+        $roleRows = DB::table($userRoles)
+            ->join($roles, "{$roles}.id", '=', "{$userRoles}.role_id")
+            ->where("{$userRoles}.user_type", $user->getMorphClass())
+            ->where("{$userRoles}.user_id", $user->getKey())
+            ->whereNotNull("{$userRoles}.expires_at")
+            ->get([
+                "{$roles}.slug",
+                "{$roles}.name",
+                "{$userRoles}.starts_at",
+                "{$userRoles}.expires_at",
+            ])
+            ->map(fn ($row) => [
+                'type' => 'role',
+                'name' => (string) $row->slug,
+                'label' => (string) $row->name,
+                'starts_at' => $row->starts_at,
+                'expires_at' => $row->expires_at,
+                'active' => ($row->starts_at === null || $row->starts_at <= $now)
+                    && $row->expires_at > $now,
+            ])
+            ->all();
+
+        return array_values(array_merge($direct, $roleRows));
     }
 
     protected function resourceFromName(string $name): string
