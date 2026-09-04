@@ -56,17 +56,36 @@ class EloquentRoleRepository implements RoleRepositoryContract
 
     public function permissionNamesForRole(int|string $roleId): array
     {
+        return collect($this->permissionEntriesForRole($roleId))
+            ->where('effect', 'allow')
+            ->pluck('name')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array{name: string, effect: string}>
+     */
+    public function permissionEntriesForRole(int|string $roleId): array
+    {
         $permissions = Tables::permissions();
         $rolePermissions = Tables::rolePermissions();
 
         return DB::table($rolePermissions)
             ->join($permissions, "{$permissions}.id", '=', "{$rolePermissions}.permission_id")
             ->where("{$rolePermissions}.role_id", $roleId)
-            ->where("{$rolePermissions}.effect", 'allow')
             ->where("{$permissions}.is_active", true)
             ->whereNull("{$permissions}.deleted_at")
-            ->pluck("{$permissions}.name")
-            ->unique()
+            ->get([
+                "{$permissions}.name",
+                "{$rolePermissions}.effect",
+            ])
+            ->map(fn ($row) => [
+                'name' => (string) $row->name,
+                'effect' => (string) ($row->effect ?: 'allow'),
+            ])
+            ->unique(fn (array $row) => $row['name'].'|'.$row['effect'])
             ->values()
             ->all();
     }

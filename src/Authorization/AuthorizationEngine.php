@@ -4,6 +4,7 @@ namespace Libinkk\Permission\Authorization;
 
 use Libinkk\Permission\Cache\DecisionCache;
 use Libinkk\Permission\Cache\PermissionFake;
+use Libinkk\Permission\Conditions\ConditionResolver;
 use Libinkk\Permission\Contracts\AuthorizationEngine as AuthorizationEngineContract;
 use Libinkk\Permission\Permissions\PermissionResolver;
 use Throwable;
@@ -15,6 +16,7 @@ class AuthorizationEngine implements AuthorizationEngineContract
     public function __construct(
         protected PermissionResolver $resolver,
         protected DecisionCache $decisions,
+        protected ConditionResolver $conditions,
     ) {
     }
 
@@ -85,6 +87,8 @@ class AuthorizationEngine implements AuthorizationEngineContract
                 : Decision::deny($permission, $user, resource: $resource, reason: DecisionReason::EXPLICIT_DENY, source: 'fake');
         }
 
+        $hasDynamicConditions = $this->conditions->hasConditions($permission) || $context->hasResource();
+
         $cacheKey = $this->decisions->keyFor(
             $context->userKey().'|'.$this->resolver->permissionMapCacheSalt($user, $guard),
             $permission,
@@ -92,10 +96,12 @@ class AuthorizationEngine implements AuthorizationEngineContract
             $context->resourceKey()
         );
 
-        $cached = $this->decisions->get($cacheKey, $context->hasResource());
+        if (! $hasDynamicConditions) {
+            $cached = $this->decisions->get($cacheKey, $context->hasResource());
 
-        if ($cached instanceof Decision) {
-            return $cached;
+            if ($cached instanceof Decision) {
+                return $cached;
+            }
         }
 
         $map = $this->resolver->permissionMapFor($user, $guard);
@@ -112,28 +118,85 @@ class AuthorizationEngine implements AuthorizationEngineContract
                     'permission' => false,
                     'role' => $this->resolver->rolesFor($user, $guard) !== [],
                     'wildcard' => false,
+                    'conditions' => null,
                 ],
             );
-        } else {
-            $decision = Decision::allow(
+        } elseif (Precedence::isDeny($entry['layer']) || ($entry['effect'] ?? 'allow') === 'deny') {
+            $decision = Decision::deny(
                 permission: $permission,
                 user: $user,
                 role: $entry['role'] ?? null,
                 resource: $resource,
+                reason: DecisionReason::EXPLICIT_DENY,
                 source: $entry['source'],
                 metadata: [
                     'matched' => $entry['matched'],
                     'via' => $entry['via'],
+                    'layer' => $entry['layer'],
+                    'effect' => $entry['effect'],
                 ],
                 checks: [
                     'permission' => true,
+                    'denied' => true,
                     'role' => ($entry['role'] ?? null) !== null,
                     'wildcard' => str_starts_with($entry['via'], 'wildcard'),
+                    'conditions' => null,
                 ],
             );
+        } else {
+            $conditionResult = $this->conditions->evaluate($user, $permission, $resource, $arguments);
+
+            if (! $conditionResult['passed']) {
+                $reason = str_ends_with($permission, '.own') && ($conditionResult['results']['owner'] ?? true) === false
+                    ? DecisionReason::RESOURCE_DENIED
+                    : DecisionReason::CONDITION_FAILED;
+
+                $decision = Decision::deny(
+                    permission: $permission,
+                    user: $user,
+                    role: $entry['role'] ?? null,
+                    resource: $resource,
+                    reason: $reason,
+                    source: $entry['source'],
+                    metadata: [
+                        'matched' => $entry['matched'],
+                        'via' => $entry['via'],
+                        'layer' => $entry['layer'],
+                    ],
+                    checks: [
+                        'permission' => true,
+                        'role' => ($entry['role'] ?? null) !== null,
+                        'wildcard' => str_starts_with($entry['via'], 'wildcard'),
+                        'conditions' => false,
+                    ],
+                );
+                $decision->conditions = $conditionResult['results'];
+            } else {
+                $decision = Decision::allow(
+                    permission: $permission,
+                    user: $user,
+                    role: $entry['role'] ?? null,
+                    resource: $resource,
+                    source: $entry['source'],
+                    metadata: [
+                        'matched' => $entry['matched'],
+                        'via' => $entry['via'],
+                        'layer' => $entry['layer'],
+                    ],
+                    checks: [
+                        'permission' => true,
+                        'role' => ($entry['role'] ?? null) !== null,
+                        'wildcard' => str_starts_with($entry['via'], 'wildcard'),
+                        'conditions' => $conditionResult['results'] === [] ? null : true,
+                    ],
+                );
+                $decision->conditions = $conditionResult['results'];
+            }
         }
 
-        $this->decisions->put($cacheKey, $decision, $context->hasResource());
+        if (! $hasDynamicConditions) {
+            $this->decisions->put($cacheKey, $decision, $context->hasResource());
+        }
 
         if ($decision->allowed()) {
             event(new \Libinkk\Permission\Events\AuthorizationAllowed($decision));

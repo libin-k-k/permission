@@ -20,6 +20,10 @@ use Libinkk\Permission\Commands\InstallCommand;
 use Libinkk\Permission\Commands\ResourceCommand;
 use Libinkk\Permission\Commands\SyncCommand;
 use Libinkk\Permission\Commands\ValidateCommand;
+use Libinkk\Permission\Conditions\Condition;
+use Libinkk\Permission\Conditions\ConditionRegistry;
+use Libinkk\Permission\Conditions\ConditionResolver;
+use Libinkk\Permission\Conditions\OwnershipChecker;
 use Libinkk\Permission\Contracts\AuthorizationEngine as AuthorizationEngineContract;
 use Libinkk\Permission\Contracts\PermissionCache as PermissionCacheContract;
 use Libinkk\Permission\Contracts\PermissionRepository as PermissionRepositoryContract;
@@ -33,6 +37,7 @@ use Libinkk\Permission\Permissions\PermissionRegistry;
 use Libinkk\Permission\Permissions\PermissionResolver;
 use Libinkk\Permission\Repositories\EloquentPermissionRepository;
 use Libinkk\Permission\Repositories\EloquentRoleRepository;
+use Libinkk\Permission\Roles\RoleHierarchy;
 use Libinkk\Permission\Roles\RoleManager;
 use Libinkk\Permission\Support\PermissionDoctor;
 use Libinkk\Permission\Support\PermissionValidator;
@@ -47,6 +52,10 @@ class PermissionServiceProvider extends ServiceProvider
 
         $this->app->singleton(PermissionRepositoryContract::class, EloquentPermissionRepository::class);
         $this->app->singleton(RoleRepositoryContract::class, EloquentRoleRepository::class);
+
+        $this->app->singleton(ConditionRegistry::class);
+        $this->app->singleton(ConditionResolver::class);
+        $this->app->singleton(RoleHierarchy::class);
 
         $this->app->singleton(PermissionResolver::class);
         $this->app->singleton(PermissionRegistry::class);
@@ -70,11 +79,23 @@ class PermissionServiceProvider extends ServiceProvider
 
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
 
+        $this->registerBuiltinConditions();
         $this->registerCommands();
         $this->registerGate();
         $this->registerMiddleware();
         $this->registerBlade();
         $this->registerOctaneFlush();
+    }
+
+    protected function registerBuiltinConditions(): void
+    {
+        Condition::define('owner', function (object $user, mixed $resource = null, array $options = []) {
+            return OwnershipChecker::owns(
+                $user,
+                $resource,
+                attribute: $options['value'] ?? $options['attribute'] ?? config('permission.ownership.attribute')
+            );
+        });
     }
 
     protected function registerCommands(): void
@@ -156,6 +177,10 @@ class PermissionServiceProvider extends ServiceProvider
             $this->app->make('events')->listen($event, function () {
                 if ($this->app->bound(PermissionCacheContract::class)) {
                     $this->app->make(PermissionCacheContract::class)->flushRequestCache();
+                }
+
+                if ($this->app->bound(ConditionRegistry::class)) {
+                    $this->app->make(ConditionRegistry::class)->flush();
                 }
 
                 PermissionFake::reset();

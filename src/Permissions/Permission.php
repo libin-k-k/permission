@@ -159,12 +159,12 @@ class Permission extends Model
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public static function define(string $name, array $attributes = []): self
+    public static function define(string $name, array $attributes = []): PermissionDefinition
     {
         $guard = $attributes['guard'] ?? null;
         unset($attributes['guard']);
 
-        return static::findOrCreate($name, $guard, $attributes);
+        return new PermissionDefinition(static::findOrCreate($name, $guard, $attributes));
     }
 
     /**

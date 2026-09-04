@@ -101,20 +101,24 @@ $user->explain('posts.delete');
 
 ## Features
 
-### Available now (v0.2)
+### Available now (v0.3)
 
 - **RBAC** — roles, role permissions, user ↔ role assignment
 - **Direct permissions** — grant/revoke on the user
+- **Role hierarchy** — `Role::inherit()`, cycle prevention, inherited permissions
+- **Explicit deny** — `$user->denyPermissionTo()` / `$role->denyPermissionTo()` with configurable precedence
+- **ABAC / conditions** — `Permission::define()->when(...)`, named `Condition::define()`
+- **Ownership** — `.own` suffix + built-in `owner` condition
 - **Permission resources** — `Permission::defineResource()`, `Permission::crud()`
 - **Permission groups** — `group` metadata + `Permission::inGroup()`
 - **Wildcards** — `posts.*`, `posts.view.*` resolve at decision time
 - **Discovery** — PHP `#[Permission]` attributes + `permission:discover` / `sync`
 - **Artisan DX** — install, resource, discover, sync, validate, doctor, cache, export
-- **User access export** — `$user->exportAccess()` / `permission:export` (roles + effective permissions + totals)
+- **User access export** — `$user->exportAccess()` / `permission:export`
 - **Laravel Gate** — `Gate::before` integration for managed abilities
 - **Middleware** — `permission:` and `role:` (configurable AND/OR)
 - **Blade** — `@can`, `@role`, `@canall`
-- **Explainable decisions** — `Decision` + `DecisionReason` constants
+- **Explainable decisions** — `Decision` + condition checks + deny layers
 - **Layered cache** — request-level + store cache, Octane-safe flush
 - **Multi-guard** — `guard_name` on roles/permissions and users
 - **Configurable keys** — `bigint`, UUID, or ULID
@@ -127,7 +131,7 @@ $user->explain('posts.delete');
 |---------|--------|
 | **v0.1** | Roles, permissions, Gate, middleware, Blade, basic cache ✅ |
 | **v0.2** | Resources, groups, wildcards, Artisan, discovery, validate, doctor, user export ✅ |
-| **v0.3** | Conditions (ABAC), ownership, hierarchy, explicit deny polish |
+| **v0.3** | Conditions, ABAC, ownership, role hierarchy, explicit deny, explanation ✅ |
 | **v0.4** | Tenants, hierarchical scopes, authorization context |
 | **v0.5** | Temporary access, delegation, audit logs, versioning |
 | **v0.6** | Vue / React adapters, authorization API payloads |
@@ -189,6 +193,51 @@ $user->can('posts.view.own'); // true
 ```
 
 Exact matches win over wildcards when both are present.
+
+### Role hierarchy
+
+```php
+Role::inherit('admin', 'manager');   // admin inherits manager's permissions
+Role::inherit('manager', 'editor');
+Role::inherit('editor', 'viewer');
+
+Role::uninherit('admin', 'manager'); // remove link
+```
+
+Circular inheritance is rejected and reported by `permission:validate`.
+
+### Explicit deny
+
+```php
+$role->givePermissionTo('posts.delete');
+$user->assignRole($role);
+$user->denyPermissionTo('posts.delete'); // wins over role allow
+
+$role->denyPermissionTo('posts.publish');
+```
+
+Default precedence: explicit deny → explicit allow → role deny → role allow → inherited deny → inherited allow → default deny.
+
+### Conditions & ownership (ABAC)
+
+```php
+use Libinkk\Permission\Conditions\Condition;
+use Libinkk\Permission\Permissions\Permission;
+
+Condition::define('within_approval_limit', function ($user, $invoice) {
+    return $invoice->amount <= $user->approval_limit;
+});
+
+Permission::define('invoice.approve')
+    ->when('within_approval_limit');
+
+Permission::define('posts.update.own')
+    ->when(fn ($user, $post) => $post->author_id === $user->id);
+
+// .own suffix also auto-checks ownership (author_id / user_id / owner_id / ...)
+$user->can('posts.update.own', $post);
+$user->explain('invoice.approve', $invoice); // includes condition results
+```
 
 ---
 
@@ -459,6 +508,9 @@ Core tables created by the package migration:
 | `role_permissions` | Role ↔ permission (`effect`: allow/deny) |
 | `user_roles` | Polymorphic user ↔ role (optional scope + expiry columns) |
 | `user_permissions` | Polymorphic user ↔ permission (effect + scope + expiry) |
+| `role_inheritances` | Parent role inherits child role permissions |
+| `permission_conditions` | Named/typed ABAC conditions per permission |
+| `permission_condition_values` | Structured values for conditions |
 
 Soft deletes apply to roles and permissions only — never use soft deletes for audit history (when audit lands).
 
@@ -535,9 +587,10 @@ vendor/bin/phpunit
 ```text
 src/
 ├── Attributes/      PHP #[Permission] attribute
-├── Authorization/   Engine, Context, Decision, UserAccessExporter
-├── Roles/           Role, RoleManager
-├── Permissions/     Permission, PermissionManager, Registry, Resolver
+├── Authorization/   Engine, Context, Decision, Precedence, UserAccessExporter
+├── Roles/           Role, RoleManager, RoleHierarchy
+├── Permissions/     Permission, PermissionDefinition, Manager, Registry, Resolver
+├── Conditions/      Condition, ConditionRegistry, ConditionResolver, OwnershipChecker
 ├── Discovery/       AttributeScanner, PermissionDiscovery
 ├── Cache/           PermissionCache, DecisionCache, PermissionFake
 ├── Commands/        Artisan DX commands

@@ -18,6 +18,9 @@ return [
         'role_permissions' => 'role_permissions',
         'user_roles' => 'user_roles',
         'user_permissions' => 'user_permissions',
+        'role_inheritances' => 'role_inheritances',
+        'permission_conditions' => 'permission_conditions',
+        'permission_condition_values' => 'permission_condition_values',
     ],
 
     'database' => [
@@ -61,11 +64,29 @@ return [
     ],
 
     'hierarchy' => [
-        'enabled' => false,
+        'enabled' => true,
     ],
 
     'deny' => [
-        'enabled' => false,
+        'enabled' => true,
+        'precedence' => [
+            'explicit_deny',
+            'explicit_allow',
+            'role_deny',
+            'role_allow',
+            'inherited_deny',
+            'inherited_allow',
+        ],
+    ],
+
+    'conditions' => [
+        'enabled' => true,
+        'persist_named' => true,
+    ],
+
+    'ownership' => [
+        'auto_own_suffix' => true,
+        'attribute' => null, // e.g. author_id; null = try common fields
     ],
 
     'audit' => [

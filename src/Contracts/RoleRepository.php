@@ -16,5 +16,10 @@ interface RoleRepository
      */
     public function permissionNamesForRole(int|string $roleId): array;
 
+    /**
+     * @return list<array{name: string, effect: string}>
+     */
+    public function permissionEntriesForRole(int|string $roleId): array;
+
     public function findOrCreate(string $name, string $guard): array;
 }

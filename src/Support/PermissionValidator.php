@@ -23,7 +23,9 @@ class PermissionValidator
         $warnings = array_merge($warnings, $this->inactiveAssigned());
         $warnings = array_merge($warnings, $this->conflictingEffects());
 
-        if (! config('permission.hierarchy.enabled')) {
+        if (config('permission.hierarchy.enabled')) {
+            $errors = array_merge($errors, $this->circularInheritance($guard));
+        } else {
             $warnings[] = [
                 'code' => 'HIERARCHY_DISABLED',
                 'message' => 'Role hierarchy validation skipped (permission.hierarchy.enabled=false).',
@@ -35,6 +37,20 @@ class PermissionValidator
             'errors' => $errors,
             'warnings' => $warnings,
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function circularInheritance(?string $guard): array
+    {
+        $cycles = app(\Libinkk\Permission\Roles\RoleHierarchy::class)->detectCycles($guard);
+
+        return collect($cycles)->map(fn (array $cycle) => [
+            'code' => 'CIRCULAR_ROLE_INHERITANCE',
+            'message' => 'Circular role inheritance: '.implode(' → ', $cycle['path'] ?? [$cycle['parent'], $cycle['child']]),
+            'path' => $cycle['path'] ?? [],
+        ])->all();
     }
 
     /**

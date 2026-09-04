@@ -11,6 +11,7 @@ use Libinkk\Permission\Events\RoleCreated;
 use Libinkk\Permission\Events\RoleDeleted;
 use Libinkk\Permission\Events\RoleUpdated;
 use Libinkk\Permission\Permissions\Permission;
+use Libinkk\Permission\Roles\RoleHierarchy;
 use Libinkk\Permission\Support\Tables;
 use Libinkk\Permission\Support\UsesConfiguredKeys;
 
@@ -89,17 +90,12 @@ class Role extends Model
 
     public function givePermissionTo(string|Permission|array ...$permissions): static
     {
-        $guard = $this->guard_name ?: config('permission.default_guard', 'web');
+        return $this->syncPermissionEffect($permissions, 'allow');
+    }
 
-        foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
-            $this->permissions()->syncWithoutDetaching([
-                $permission->getKey() => ['effect' => 'allow'],
-            ]);
-        }
-
-        app(PermissionCache::class)->forgetRole($this->slug);
-
-        return $this;
+    public function denyPermissionTo(string|Permission|array ...$permissions): static
+    {
+        return $this->syncPermissionEffect($permissions, 'deny');
     }
 
     public function revokePermissionTo(string|Permission|array ...$permissions): static
@@ -130,6 +126,16 @@ class Role extends Model
         return $this;
     }
 
+    public static function inherit(string|Role $parent, string|Role $child, ?string $guard = null): void
+    {
+        app(RoleHierarchy::class)->inherit($parent, $child, $guard);
+    }
+
+    public static function uninherit(string|Role $parent, string|Role $child, ?string $guard = null): void
+    {
+        app(RoleHierarchy::class)->uninherit($parent, $child, $guard);
+    }
+
     public function hasPermissionTo(string|Permission $permission): bool
     {
         $name = $permission instanceof Permission ? $permission->name : $permission;
@@ -137,6 +143,24 @@ class Role extends Model
         return $this->permissions->contains(
             fn (Permission $model) => $model->name === $name && ($model->pivot->effect ?? 'allow') === 'allow'
         );
+    }
+
+    /**
+     * @param  array<int, string|Permission|array>  $permissions
+     */
+    protected function syncPermissionEffect(array $permissions, string $effect): static
+    {
+        $guard = $this->guard_name ?: config('permission.default_guard', 'web');
+
+        foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
+            $this->permissions()->syncWithoutDetaching([
+                $permission->getKey() => ['effect' => $effect],
+            ]);
+        }
+
+        app(PermissionCache::class)->forgetRole($this->slug);
+
+        return $this;
     }
 
     /**

@@ -62,6 +62,7 @@ abstract class TestCase extends Orchestra
             $table->string('email')->nullable();
             $table->string('password')->nullable();
             $table->string('guard_name')->nullable();
+            $table->unsignedInteger('approval_limit')->nullable();
             $table->timestamps();
         });
 

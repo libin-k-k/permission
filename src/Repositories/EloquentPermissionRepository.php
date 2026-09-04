@@ -34,6 +34,19 @@ class EloquentPermissionRepository implements PermissionRepositoryContract
 
     public function directPermissionsFor(object $user, string $guard): array
     {
+        return collect($this->directPermissionEntriesFor($user, $guard))
+            ->where('effect', 'allow')
+            ->pluck('name')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array{name: string, effect: string}>
+     */
+    public function directPermissionEntriesFor(object $user, string $guard): array
+    {
         $now = now();
         $permissions = Tables::permissions();
         $userPermissions = Tables::userPermissions();
@@ -45,7 +58,6 @@ class EloquentPermissionRepository implements PermissionRepositoryContract
             ->where("{$permissions}.guard_name", $guard)
             ->where("{$permissions}.is_active", true)
             ->whereNull("{$permissions}.deleted_at")
-            ->where("{$userPermissions}.effect", 'allow')
             ->where(function ($query) use ($userPermissions, $now) {
                 $query->whereNull("{$userPermissions}.starts_at")
                     ->orWhere("{$userPermissions}.starts_at", '<=', $now);
@@ -54,8 +66,15 @@ class EloquentPermissionRepository implements PermissionRepositoryContract
                 $query->whereNull("{$userPermissions}.expires_at")
                     ->orWhere("{$userPermissions}.expires_at", '>', $now);
             })
-            ->pluck("{$permissions}.name")
-            ->unique()
+            ->get([
+                "{$permissions}.name",
+                "{$userPermissions}.effect",
+            ])
+            ->map(fn ($row) => [
+                'name' => (string) $row->name,
+                'effect' => (string) ($row->effect ?: 'allow'),
+            ])
+            ->unique(fn (array $row) => $row['name'].'|'.$row['effect'])
             ->values()
             ->all();
     }

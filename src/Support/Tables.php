@@ -2,30 +2,53 @@
 
 namespace Libinkk\Permission\Support;
 
+/**
+ * Configurable authorization table names.
+ */
 final class Tables
 {
+    public static function get(string $name, ?string $default = null): string
+    {
+        return (string) config("permission.table_names.{$name}", $default ?? $name);
+    }
+
     public static function roles(): string
     {
-        return config('permission.table_names.roles', 'roles');
+        return self::get('roles', 'roles');
     }
 
     public static function permissions(): string
     {
-        return config('permission.table_names.permissions', 'permissions');
+        return self::get('permissions', 'permissions');
     }
 
     public static function rolePermissions(): string
     {
-        return config('permission.table_names.role_permissions', 'role_permissions');
+        return self::get('role_permissions', 'role_permissions');
     }
 
     public static function userRoles(): string
     {
-        return config('permission.table_names.user_roles', 'user_roles');
+        return self::get('user_roles', 'user_roles');
     }
 
     public static function userPermissions(): string
     {
-        return config('permission.table_names.user_permissions', 'user_permissions');
+        return self::get('user_permissions', 'user_permissions');
+    }
+
+    public static function roleInheritances(): string
+    {
+        return self::get('role_inheritances', 'role_inheritances');
+    }
+
+    public static function permissionConditions(): string
+    {
+        return self::get('permission_conditions', 'permission_conditions');
+    }
+
+    public static function permissionConditionValues(): string
+    {
+        return self::get('permission_condition_values', 'permission_condition_values');
     }
 }

@@ -42,14 +42,17 @@ class CacheCommand extends Command
             ->get();
 
         foreach ($roles as $role) {
-            $names = $role->permissions()
-                ->wherePivot('effect', 'allow')
-                ->pluck('name')
-                ->unique()
+            $entries = $role->permissions()
+                ->get()
+                ->map(fn ($permission) => [
+                    'name' => $permission->name,
+                    'effect' => (string) ($permission->pivot->effect ?? 'allow'),
+                ])
+                ->unique(fn (array $row) => $row['name'].'|'.$row['effect'])
                 ->values()
                 ->all();
 
-            $cache->put("role:{$role->slug}:permissions", $names, 'roles');
+            $cache->put("role:{$role->slug}:permissions", $entries, 'roles');
         }
 
         $this->components->success("Warmed cache for guard [{$guard}] ({$roles->count()} roles, ".count($permissions).' permissions).');

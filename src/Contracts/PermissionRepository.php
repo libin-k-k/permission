@@ -16,5 +16,10 @@ interface PermissionRepository
      */
     public function directPermissionsFor(object $user, string $guard): array;
 
+    /**
+     * @return list<array{name: string, effect: string}>
+     */
+    public function directPermissionEntriesFor(object $user, string $guard): array;
+
     public function findOrCreate(string $name, string $guard): array;
 }

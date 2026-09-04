@@ -121,19 +121,12 @@ trait HasAuthorization
 
     public function givePermissionTo(string|Permission|array ...$permissions): static
     {
-        $guard = $this->authorizationGuard();
+        return $this->assignPermissionEffect($permissions, 'allow');
+    }
 
-        foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
-            $this->permissions()->syncWithoutDetaching([
-                $permission->getKey() => $this->assignmentPivot(['effect' => 'allow']),
-            ]);
-
-            event(new PermissionGranted($this, $permission));
-        }
-
-        $this->authorizationCache()->forgetUser($this);
-
-        return $this;
+    public function denyPermissionTo(string|Permission|array ...$permissions): static
+    {
+        return $this->assignPermissionEffect($permissions, 'deny');
     }
 
     public function revokePermissionTo(string|Permission|array ...$permissions): static
@@ -165,6 +158,26 @@ trait HasAuthorization
         }
 
         $this->permissions()->sync($sync);
+        $this->authorizationCache()->forgetUser($this);
+
+        return $this;
+    }
+
+    /**
+     * @param  array<int, string|Permission|array>  $permissions
+     */
+    protected function assignPermissionEffect(array $permissions, string $effect): static
+    {
+        $guard = $this->authorizationGuard();
+
+        foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
+            $this->permissions()->syncWithoutDetaching([
+                $permission->getKey() => $this->assignmentPivot(['effect' => $effect]),
+            ]);
+
+            event(new PermissionGranted($this, $permission));
+        }
+
         $this->authorizationCache()->forgetUser($this);
 
         return $this;
@@ -263,7 +276,10 @@ trait HasAuthorization
         $guard = $this->authorizationGuard();
         $map = app(\Libinkk\Permission\Permissions\PermissionResolver::class)->permissionMapFor($this, $guard);
 
-        return collect(array_keys($map))->values();
+        return collect($map)
+            ->filter(fn (array $entry) => ($entry['effect'] ?? 'allow') === 'allow')
+            ->keys()
+            ->values();
     }
 
     public function authorizationGuard(): string

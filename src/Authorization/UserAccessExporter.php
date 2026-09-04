@@ -43,12 +43,17 @@ class UserAccessExporter
         }
 
         $direct = [];
+        $denials = [];
         foreach ($map as $name => $entry) {
             if (($entry['source'] ?? null) === 'direct') {
                 $direct[] = $name;
             }
+            if (($entry['effect'] ?? 'allow') === 'deny') {
+                $denials[] = $name;
+            }
         }
         sort($direct);
+        sort($denials);
 
         $effective = $this->expandEffective($map, $registry);
         $assigned = array_keys($map);
@@ -66,6 +71,7 @@ class UserAccessExporter
             'exported_at' => now()->toIso8601String(),
             'roles' => $roleDetails,
             'direct_permissions' => $direct,
+            'denials' => $denials,
             'assigned_permissions' => $assigned,
             'effective_permissions' => $effective,
             'by_group' => $byGroup,
@@ -73,6 +79,7 @@ class UserAccessExporter
             'totals' => [
                 'roles' => count($roleDetails),
                 'direct_permissions' => count($direct),
+                'denials' => count($denials),
                 'assigned_permissions' => count($assigned),
                 'role_permissions' => $rolePermissionCount,
                 'effective_permissions' => count($effective),
@@ -101,6 +108,8 @@ class UserAccessExporter
                 $effective[$name] = [
                     'source' => $entry['source'],
                     'role' => $entry['role'] ?? null,
+                    'effect' => $entry['effect'] ?? 'allow',
+                    'layer' => $entry['layer'] ?? null,
                     'via' => 'exact',
                     'matched' => $name,
                     'group' => $registry[$name]['group'] ?? null,
@@ -113,6 +122,8 @@ class UserAccessExporter
             $effective[$name] = [
                 'source' => $entry['source'],
                 'role' => $entry['role'] ?? null,
+                'effect' => $entry['effect'] ?? 'allow',
+                'layer' => $entry['layer'] ?? null,
                 'via' => 'wildcard',
                 'matched' => $name,
                 'group' => $registry[$name]['group'] ?? null,
@@ -135,6 +146,8 @@ class UserAccessExporter
                 $effective[$registered] = [
                     'source' => $entry['source'],
                     'role' => $entry['role'] ?? null,
+                    'effect' => $entry['effect'] ?? 'allow',
+                    'layer' => $entry['layer'] ?? null,
                     'via' => 'wildcard:'.$name,
                     'matched' => $name,
                     'group' => $registry[$registered]['group'] ?? null,
