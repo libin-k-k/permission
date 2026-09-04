@@ -1,0 +1,17 @@
+/vendor/
+/composer.lock
+/.phpunit.cache/
+/.phpunit.result.cache
+/phpunit.xml
+/.idea/
+/.vscode/
+/.php-cs-fixer.cache
+
+# Cursor
+/.cursor/
+/.cursorrules
+/.cursorignore
+
+# Local package specs (not for publish)
+/libinkk-permission.md
+/libinkk-permission-table-cache.md
