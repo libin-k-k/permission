@@ -1,6 +1,6 @@
 {
     "name": "libinkk/permission",
-    "description": "Production-grade Laravel authorization engine with RBAC, ABAC, multi-tenancy, temporary access, delegation, audit logs, and Vue/React helpers.",
+    "description": "Production-grade Laravel authorization engine (v1.0) with RBAC, ABAC, multi-tenancy, temporary access, delegation, audit logs, and Vue/React helpers.",
     "keywords": [
         "libinkk",
         "laravel",

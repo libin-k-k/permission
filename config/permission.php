@@ -174,6 +174,10 @@ return [
         ],
     ],
 
+    'testing' => [
+        'allow_fake' => false,
+    ],
+
     'discovery' => [
         'enabled' => true,
         'paths' => [

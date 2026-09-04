@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Libinkk\Permission\Cache\CacheMetrics;
+use Libinkk\Permission\Version;
 use Libinkk\Permission\Debug\UnusedPermissionFinder;
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Roles\Role;
@@ -32,6 +33,7 @@ class PermissionDoctor
         $activeRoles = Role::query()->where('is_active', true)->when($guard, fn ($q) => $q->where('guard_name', $guard))->count();
 
         $checks = [
+            $this->ok('libinkk/permission '.Version::VERSION),
             $this->ok("{$permissionCount} permissions registered ({$activePermissions} active)"),
             $this->ok("{$roleCount} roles registered ({$activeRoles} active)"),
             $this->tableCheck(Tables::roles()),
@@ -74,6 +76,7 @@ class PermissionDoctor
             'healthy' => $healthy,
             'checks' => $checks,
             'report' => [
+                'version' => Version::VERSION,
                 'permissions' => $permissionCount,
                 'roles' => $roleCount,
                 'unused_permissions' => $unused['total'],

@@ -1,12 +1,14 @@
 # libinkk/permission
 
-**Production-grade Laravel authorization engine** with RBAC, ABAC, multi-tenancy, temporary access, delegation, audit logs, explainable decisions, and layered caching.
+**v1.0** — production-grade Laravel authorization engine.
+
+RBAC + ABAC + tenants + temporary access + delegation + explainable decisions + layered cache.
 
 > Authorization that explains itself.
 
 Most permission packages answer: *Does this user have this permission?*
 
-`libinkk/permission` answers:
+This package answers:
 
 > Is this user allowed to perform this action on this resource, in the current scope, under the current conditions — and if not, why?
 
@@ -15,48 +17,84 @@ $user->can('invoice.approve', $invoice);
 $user->explain('invoice.approve', $invoice);
 ```
 
----
+This is **not** a thin roles CRUD helper. Blade, Vue, React, and Filament are **UI only**. Every write path must go Laravel → this package → ALLOW / DENY.
 
-## Why this package?
-
-| Focus | What you get |
-|-------|----------------|
-| **Authorization engine** | Fail-closed decisions with structured reasons and sources |
-| **Laravel-native** | Works with Gate, `$user->can()`, middleware, Blade `@can` / `@role` |
-| **Explainable** | `explain()` and `authorizeFor()` return a full `Decision` object |
-| **Performant** | Request memory → app cache → Redis → database |
-| **Secure defaults** | Deny on failure; never trust frontend UI checks as a security boundary |
-| **Extensible** | Contracts for engine, repositories, and cache |
-
-This is **not** a thin roles CRUD helper. It is infrastructure for production authorization.
+| Doc | Purpose |
+|-----|---------|
+| This README | Tutorials and API |
+| [UPGRADE.md](UPGRADE.md) | 0.x → 1.0 |
+| [SECURITY.md](SECURITY.md) | How to report issues |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [docs/deployment.md](docs/deployment.md) | Production checklist |
+| [docs/benchmarks.md](docs/benchmarks.md) | Cache / query notes |
 
 ---
 
-## Requirements
+## Contents
 
-- PHP **8.1+**
-- Laravel **10 / 11 / 12 / 13**
+1. [Compatibility](#compatibility)
+2. [Installation](#installation)
+3. [Tutorial 1 — Blog in 15 minutes](#tutorial-1--blog-in-15-minutes)
+4. [Tutorial 2 — Invoice approval (ABAC + delegation)](#tutorial-2--invoice-approval-abac--delegation)
+5. [Tutorial 3 — Multi-tenant SaaS](#tutorial-3--multi-tenant-saas)
+6. [Permission naming](#permission-naming)
+7. [Roles and users](#roles-and-users)
+8. [Wildcards, hierarchy, deny](#wildcards-hierarchy-deny)
+9. [Conditions, ownership, policies](#conditions-ownership-policies)
+10. [Guards](#guards)
+11. [Temporary access and delegation](#temporary-access-and-delegation)
+12. [Audit, history, versioning](#audit-history-versioning)
+13. [Middleware](#middleware)
+14. [Blade](#blade)
+15. [Vue](#vue)
+16. [React](#react)
+17. [Authorization API](#authorization-api)
+18. [Filament](#filament)
+19. [Discovery](#discovery)
+20. [Debugger and Artisan](#debugger-and-artisan)
+21. [Bulk, cache, performance](#bulk-cache-performance)
+22. [Testing](#testing)
+23. [Security](#security)
+24. [Troubleshooting](#troubleshooting)
+25. [Architecture](#architecture)
+
+---
+
+## Compatibility
+
+| Laravel | PHP |
+|---------|-----|
+| 10 | 8.1 – 8.3 |
+| 11 | 8.2 – 8.4 |
+| 12 | 8.2 – 8.4 |
+| 13 | 8.3 – 8.4 |
+
+Package version: `Libinkk\Permission\Version::VERSION` → **1.0.0**.
+
+CI: [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 
 ---
 
 ## Installation
 
 ```bash
-composer require libinkk/permission
+composer require libinkk/permission:^1.0
+php artisan permission:install --migrate
 ```
 
-Publish the config (optional) or use the installer:
+Or publish by hand:
 
 ```bash
-php artisan permission:install --migrate
-# or
 php artisan vendor:publish --tag=libinkk-permission-config
 php artisan migrate
 ```
 
-Add the trait to your authenticatable model:
+Set `permission.database.primary_key` to `bigint` (default), `uuid`, or `ulid` **before** the first migrate.
+
+Add the trait. The package does **not** own `users`. Assignments are `user_type` / `user_id`.
 
 ```php
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Libinkk\Permission\Concerns\HasAuthorization;
 
 class User extends Authenticatable
@@ -65,144 +103,258 @@ class User extends Authenticatable
 }
 ```
 
-The package does **not** own your `users` table. Assignments are polymorphic via `user_type` / `user_id`.
+```bash
+php artisan permission:doctor
+```
 
 ---
 
-## Quick start
+## Tutorial 1 — Blog in 15 minutes
+
+Goal: editors can write posts, admins can delete, guests cannot.
+
+### 1. Define permissions
 
 ```php
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Roles\Role;
 
-// Define a whole resource at once (or Permission::crud('posts'))
-Permission::defineResource('posts', ['view', 'create', 'update', 'delete', 'publish'], [
-    'group' => 'Posts',
-]);
+Permission::crud('posts'); // posts.view / create / update / delete
+Permission::define('posts.publish', ['group' => 'Posts']);
+```
 
-// Create a role and attach permissions (wildcards supported)
-$role = Role::findOrCreate('editor');
-$role->givePermissionTo('posts.*');
+Or:
 
-$user->assignRole('editor');
-$user->givePermissionTo('reports.export');
+```bash
+php artisan permission:resource posts --actions=view,create,update,delete,publish --group=Posts
+```
 
-$user->can('posts.update');           // true via posts.*
-$user->hasRole('editor');             // true
+### 2. Create roles
 
-// Kill feature: full roles + permissions export
-$export = $user->exportAccess();
-// totals, roles, direct, effective (wildcard-expanded), by_group, by_resource
+```php
+Role::findOrCreate('viewer')->givePermissionTo('posts.view');
+Role::findOrCreate('editor')->givePermissionTo('posts.view', 'posts.create', 'posts.update');
+Role::findOrCreate('admin')->givePermissionTo('posts.*');
+```
 
-$user->explain('posts.delete');
+### 3. Assign and check
+
+```php
+$editor = User::find(1);
+$editor->assignRole('editor');
+
+$editor->can('posts.update'); // true
+$editor->can('posts.delete'); // false
+$editor->explain('posts.delete');
+// ['allowed' => false, 'reason' => 'PERMISSION_MISSING', ...]
+```
+
+### 4. Protect routes
+
+```php
+Route::post('/posts', [PostController::class, 'store'])
+    ->middleware(['auth', 'permission:posts.create']);
+
+Route::delete('/posts/{post}', [PostController::class, 'destroy'])
+    ->middleware(['auth', 'permission:posts.delete']);
+```
+
+### 5. Hide UI (not a grant)
+
+```blade
+@can('posts.create')
+    <a href="{{ route('posts.create') }}">New post</a>
+@endcan
+```
+
+### 6. Still check in the controller
+
+```php
+public function store(Request $request)
+{
+    $this->authorize('posts.create');
+
+    Post::query()->create($request->validated());
+}
+```
+
+`@can` only hides the link. `authorize()` / middleware is the security boundary.
+
+---
+
+## Tutorial 2 — Invoice approval (ABAC + delegation)
+
+Goal: finance managers approve invoices under their limit. A manager on leave can delegate.
+
+```php
+use Libinkk\Permission\Conditions\Condition;
+use Libinkk\Permission\Permissions\Permission;
+
+Permission::define('invoice.approve', ['group' => 'Finance', 'is_dangerous' => true]);
+
+Condition::define('within_approval_limit', function ($user, $invoice) {
+    return (int) $invoice->amount <= (int) $user->approval_limit;
+});
+
+Permission::define('invoice.approve')->when('within_approval_limit');
+```
+
+```php
+$manager = User::find(10);
+$manager->givePermissionTo('invoice.approve');
+$manager->approval_limit = 50_000;
+$manager->save();
+
+$ok = Invoice::query()->create(['amount' => 20_000]);
+$over = Invoice::query()->create(['amount' => 125_000]);
+
+$manager->can('invoice.approve', $ok);   // true
+$manager->can('invoice.approve', $over); // false — CONDITION_FAILED
+
+$decision = $manager->authorizeFor('invoice.approve', $over);
+$decision->reason;      // CONDITION_FAILED
+$decision->conditions;  // ['within_approval_limit' => false]
+```
+
+Delegate for four hours (delegator must already hold the permission):
+
+```php
+$cover = User::find(11);
+
+$delegation = $manager->delegate(
+    'invoice.approve',
+    to: $cover,
+    until: now()->addHours(4),
+    reason: 'On leave',
+    resource: $ok, // optional: only this invoice
+);
+
+$cover->can('invoice.approve', $ok); // true until expiry or revoke
+$manager->revokeDelegation($delegation);
+```
+
+Only the **delegator** can revoke. Self-delegation is rejected. If the manager later loses `invoice.approve`, the cover user loses it too.
+
+Explain in the terminal:
+
+```bash
+php artisan permission:explain 10 invoice.approve
 ```
 
 ---
 
-## Features
+## Tutorial 3 — Multi-tenant SaaS
 
-### Available now (v0.9)
+Goal: the same user is an editor in Org A and a viewer in Org B.
 
-- **Temporary access** — `$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7))`
-- **Scheduled grants** — `startsAt` / `expiresAt` on user permissions and roles
-- **Delegation** — `$user->delegate('invoice.approve', to: $manager, until: now()->addHours(4))`
-- **Audit log** — append-only `authorization_audits` (off by default)
-- **Permission versioning** — snapshots on create/update, `$permission->rollbackTo(1)`
-- **Permission history** — `$permission->history()` (versions + related audits)
-- **Multi-tenancy** — tenant-scoped roles, isolation, optional package `tenants` table
-- **Hierarchical scopes** — organization → workspace → project via `scopes.parent_id`
-- **Authorization context** — `AuthorizationContext::tenant()` / `switch()` / `scope()`
-- **Global vs tenant roles** — global roles cross tenants only when explicitly allowed
-- **RBAC** — roles, role permissions, user ↔ role assignment
-- **Direct permissions** — grant/revoke on the user
-- **Role hierarchy** — `Role::inherit()`, cycle prevention, inherited permissions
-- **Explicit deny** — `$user->denyPermissionTo()` / `$role->denyPermissionTo()` with configurable precedence
-- **ABAC / conditions** — `Permission::define()->when(...)`, named `Condition::define()`
-- **Ownership** — `.own` suffix + built-in `owner` condition
-- **Permission resources** — `Permission::defineResource()`, `Permission::crud()`
-- **Permission groups** — `group` metadata + `Permission::inGroup()`
-- **Wildcards** — `posts.*`, `posts.view.*` resolve at decision time
-- **Discovery** — PHP `#[Permission]` attributes + `permission:discover` / `sync`
-- **Artisan DX** — install, resource, discover, sync, validate, doctor, cache, export
-- **User access export** — `$user->exportAccess()` / `permission:export` (includes temporary + delegations)
-- **Laravel Gate** — `Gate::before` integration for managed abilities
-- **Middleware** — `permission:` and `role:` (configurable AND/OR)
-- **Blade** — `@can`, `@role`, `@canany`, `@canall`, `@permissionPayload`
-- **Vue / React** — `$can` / `usePermission()` / `<Can>` (UI-only)
-- **Authorization API** — `GET /api/authorization`, `/api/users/{user}/access`, `/api/permissions/matrix`
-- **Filament adapter** — optional traits for resources, pages, widgets, relation managers, actions, forms, tables, bulk, tenant sync
-- **Authorization debugger** — `$user->debugAuthorization()` / `permission:explain` / optional `GET /api/authorization/explain`
-- **Permission graph** — `permission:graph` (role tree + JSON)
-- **Unused permissions** — `permission:unused`
-- **Telescope / DebugBar** — optional recorders when those packages are installed (`debug.enabled`)
-- **Explainable decisions** — `Decision` + condition checks + deny layers
-- **Layered cache** — L1 request → L2 store → optional L3 Redis (opt-in), after-commit invalidation
-- **Bulk authorization** — `$user->authorizeMany()` / `$user->permissionsFor('posts')` / `$user->preloadAuthorization()`
-- **Octane / queue flush** — request, tenant, impersonation, and fake state reset per worker cycle
-- **UUID / ULID keys** — `permission.database.primary_key`
-- **Multi-guard** — `guard_name` on roles/permissions and users
-- **Configurable keys** — `bigint`, UUID, or ULID
-- **Testing helpers** — `Permission::fake()`, `assertCan` / `assertCannot`
-- **Events** — role/permission lifecycle, grant/revoke, delegation, policy, decisions
+```php
+// config/permission.php
+'teams' => [
+    'enabled' => true,
+    'require_context' => true, // deny if no tenant is set
+],
+```
 
-### Roadmap
+```php
+use Libinkk\Permission\Authorization\AuthorizationContext;
 
-| Version | Scope |
-|---------|--------|
-| **v0.1** | Roles, permissions, Gate, middleware, Blade, basic cache ✅ |
-| **v0.2** | Resources, groups, wildcards, Artisan, discovery, validate, doctor, user export ✅ |
-| **v0.3** | Conditions, ABAC, ownership, role hierarchy, explicit deny, explanation ✅ |
-| **v0.4** | Tenants, hierarchical scopes, authorization context ✅ |
-| **v0.5** | Temporary access, delegation, audit logs, versioning ✅ |
-| **v0.6** | Vue / React adapters, authorization API payloads ✅ |
-| **v0.7** | Optional Filament adapter (no Filament Composer dependency) ✅ |
-| **v0.8** | Debugger, graph, unused permissions, CLI explain, Telescope/DebugBar hooks ✅ |
-| **v0.9** | Redis L3 opt-in, preload/bulk APIs, Octane/queue flush, UUID/ULID, cache metrics ✅ |
-| **v1.0** | Stable docs, upgrade guide, compatibility matrix |
+$user->assignRole('editor', $orgA);
+$user->assignRole('viewer', $orgB);
 
-Schema columns for scopes, expiration, and effects are already present where needed so later slices can land without breaking migrations.
+AuthorizationContext::tenant($orgA);
+$user->can('posts.create'); // editor in A
+
+AuthorizationContext::switch($orgB);
+$user->can('posts.create'); // isolated — viewer in B
+```
+
+Nested scopes (organization → workspace):
+
+```php
+use Libinkk\Permission\Scopes\Scope;
+
+$orgScope = Scope::for($organization, 'organization');
+$wsScope = Scope::for($workspace, 'workspace', $orgScope);
+
+AuthorizationContext::scope($workspace);
+```
+
+On every HTTP request (middleware):
+
+```php
+public function handle($request, Closure $next)
+{
+    if ($tenant = $request->route('organization')) {
+        AuthorizationContext::tenant($tenant);
+    }
+
+    return $next($request);
+}
+```
+
+Queue jobs must set the tenant again. Global roles (`assignRole('super-admin')` with no tenant) cross tenants only when `teams.global_roles.cross_tenant` is true.
 
 ---
 
 ## Permission naming
 
-Use `resource.action`:
+Format: `resource.action`
 
 ```text
-posts.view
-posts.create
-posts.update
-posts.delete
-posts.publish
+posts.view   posts.create   posts.update   posts.delete   posts.publish
 invoices.approve
 reports.export
 ```
 
-Permissions with a `.` are treated as package-managed abilities by the Gate integration.
-
-### Resources & groups
+Names that contain `.` are managed by this package through `Gate::before`.
 
 ```php
-Permission::defineResource('posts', [
-    'view', 'create', 'update', 'delete', 'publish',
-], ['group' => 'Posts']);
-
-Permission::crud('invoices'); // view/create/update/delete, group "Invoices"
-
-Permission::define('reports.export', [
-    'group' => 'Reports',
-    'description' => 'Export reports',
+Permission::defineResource('posts', ['view', 'create', 'update', 'delete', 'publish'], [
+    'group' => 'Posts',
 ]);
 
-Permission::inGroup('Posts'); // Collection of permissions
+Permission::crud('invoices'); // view/create/update/delete
+
+Permission::inGroup('Posts');
+```
+
+---
+
+## Roles and users
+
+```php
+$role = Role::findOrCreate('admin');
+$role->givePermissionTo('posts.create', 'posts.delete');
+$role->revokePermissionTo('posts.delete');
+$role->syncPermissions(['posts.view', 'posts.create']);
+$role->hasPermissionTo('posts.view');
+
+$user->assignRole('editor');
+$user->removeRole('editor');
+$user->syncRoles('editor', 'author');
+$user->hasRole('editor');
+$user->hasAnyRole('editor', 'admin');
+$user->hasAllRoles('editor', 'author');
+
+$user->givePermissionTo('reports.export');
+$user->revokePermissionTo('reports.export');
+$user->getRoleNames();
+$user->getPermissionNames();
+
+$export = $user->exportAccess();
+$export['totals'];
+$export['effective_permissions'];
 ```
 
 ```bash
-php artisan permission:resource posts
-php artisan permission:resource invoices --actions=view,approve,refund --group=Invoices
+php artisan permission:export 42 --type=App\\Models\\User --format=table
 ```
 
-### Wildcards
+System rows (`is_system = true`) cannot be deleted or unprotected.
+
+---
+
+## Wildcards, hierarchy, deny
 
 ```php
 $role->givePermissionTo('posts.*');
@@ -213,277 +365,99 @@ $user->givePermissionTo('posts.view.*');
 $user->can('posts.view.own'); // true
 ```
 
-Exact matches win over wildcards when both are present.
-
-### Role hierarchy
+Exact matches beat wildcards. A wildcard does not cross resources (`posts.*` is not `invoices.view`).
 
 ```php
-Role::inherit('admin', 'manager');   // admin inherits manager's permissions
+Role::inherit('admin', 'manager');   // admin inherits manager
 Role::inherit('manager', 'editor');
-Role::inherit('editor', 'viewer');
-
-Role::uninherit('admin', 'manager'); // remove link
+Role::uninherit('admin', 'manager');
 ```
 
-Circular inheritance is rejected and reported by `permission:validate`.
-
-### Explicit deny
+Circular inheritance throws and is reported by `permission:validate`. Disable with `hierarchy.enabled = false`.
 
 ```php
-$role->givePermissionTo('posts.delete');
-$user->assignRole($role);
-$user->denyPermissionTo('posts.delete'); // wins over role allow
-
+$user->denyPermissionTo('posts.delete'); // beats role allow
 $role->denyPermissionTo('posts.publish');
 ```
 
-Default precedence: explicit deny → explicit allow → role deny → role allow → inherited deny → inherited allow → default deny.
+Default precedence:
 
-### Conditions & ownership (ABAC)
-
-```php
-use Libinkk\Permission\Conditions\Condition;
-use Libinkk\Permission\Permissions\Permission;
-
-Condition::define('within_approval_limit', function ($user, $invoice) {
-    return $invoice->amount <= $user->approval_limit;
-});
-
-Permission::define('invoice.approve')
-    ->when('within_approval_limit');
-
-Permission::define('posts.update.own')
-    ->when(fn ($user, $post) => $post->author_id === $user->id);
-
-// .own suffix also auto-checks ownership (author_id / user_id / owner_id / ...)
-$user->can('posts.update.own', $post);
-$user->explain('invoice.approve', $invoice); // includes condition results
+```text
+explicit deny → explicit allow → role deny → role allow
+  → inherited deny → inherited allow → default deny
 ```
-
-### Multi-tenancy & scopes
-
-Enable in config: `permission.teams.enabled = true`.
-
-The package does **not** own your tenant models. Bind them as scopes (or use the optional `tenants` table).
-
-```php
-use Libinkk\Permission\Authorization\AuthorizationContext;
-use Libinkk\Permission\Scopes\Scope;
-
-$orgA = Organization::find(1);
-$orgB = Organization::find(2);
-
-$user->assignRole('editor', $orgA);  // tenant A
-$user->assignRole('viewer', $orgB);  // tenant B
-
-AuthorizationContext::tenant($orgA);
-$user->can('posts.create');          // uses editor in A
-
-AuthorizationContext::switch($orgB);
-$user->can('posts.create');          // viewer in B — isolated
-
-// Nested: org admin applies to workspace when inheritance is on
-$orgScope = Scope::for($organization, 'organization');
-$wsScope = Scope::for($workspace, 'workspace', $orgScope);
-AuthorizationContext::scope($workspace);
-```
-
-Global roles (`assignRole('super-admin')` with no tenant) apply across tenants only when `permission.teams.global_roles.cross_tenant` is true.
-
-### Temporary access
-
-```php
-$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7));
-$user->givePermissionTo(
-    'reports.export',
-    startsAt: now()->addDay(),
-    expiresAt: now()->addWeek()
-);
-$user->assignRole('contractor', expiresAt: now()->addHours(4));
-
-$user->can('reports.export'); // false after expiry — reason EXPIRED_PERMISSION
-```
-
-### Delegation
-
-The delegator must currently hold the permission. Expired and revoked delegations never authorize. If the delegator later loses the permission, the delegatee loses it too (no privilege escalation).
-
-```php
-$delegation = $user->delegate(
-    'invoice.approve',
-    to: $manager,
-    until: now()->addHours(4),
-    reason: 'On leave',
-    resource: $invoice, // optional: only this resource
-);
-
-$user->revokeDelegation($delegation);
-```
-
-### Audit, history, versioning
-
-```php
-// config/permission.php
-'audit' => [
-    'enabled' => true,    // assignment + delegation + policy events
-    'decisions' => false, // also log every can() — off by default
-],
-
-$permission->history();       // versions + related audits
-$permission->rollbackTo(1);   // restore snapshot v1
-```
-
-Audit rows are append-only (no soft deletes).
-
-### Debugger (v0.8)
-
-```php
-$report = $user->debugAuthorization('invoice.approve', $invoice);
-// $report['final'] === 'ALLOWED' | 'DENIED'
-// $report['text']  — CLI / Filament panel copy
-// $report['checks'] — role, source, tenant, scope, conditions, deny, expiration, delegation
-
-FilamentAuthorization::debug('invoice.approve', $invoice);
-```
-
-```bash
-php artisan permission:explain 1 invoice.approve
-php artisan permission:graph --json
-php artisan permission:unused
-```
-
-`GET /api/authorization/explain?permission=invoice.approve` is off until `permission.debug.enabled` is true. It explains the **current user only** and is not a grant. Telescope and DebugBar hooks register only when those packages exist.
-
-### Bulk & preload (v0.9)
-
-```php
-$user->preloadAuthorization();
-
-$user->permissionsFor('posts');
-// ['view' => true, 'create' => true, 'update' => false, ...]
-
-$decisions = $user->authorizeMany('posts.update', $posts);
-AuthorizationContext::impersonating($admin); // audit identity only — not a grant
-```
-
-Redis L3 is off until `permission.cache.redis.enabled` is true. Octane and queue workers flush request cache, tenant/scope, impersonation, and `Permission::fake()` on each cycle.
 
 ---
 
-## Roles & permissions API
-
-### Roles
+## Conditions, ownership, policies
 
 ```php
-$role = Role::findOrCreate('admin');
+Permission::define('posts.update.own')
+    ->when(fn ($user, $post) => $post->author_id === $user->id);
 
-$role->givePermissionTo('posts.create', 'posts.delete');
-$role->revokePermissionTo('posts.delete');
-$role->syncPermissions(['posts.view', 'posts.create']);
-$role->hasPermissionTo('posts.view');
+$user->can('posts.update.own', $post);
 ```
 
-### Users (`HasAuthorization`)
+`.own` also auto-checks `author_id`, `user_id`, `owner_id`, or `permission.ownership.attribute`.
+
+Thrown or unknown conditions **deny**.
+
+Laravel policies are **not** an engine step. Dotted abilities are resolved here. Use a host policy for non-dotted abilities, or call both yourself. `POLICY_DENIED` is reserved for that host wiring.
+
+---
+
+## Guards
+
+Roles and permissions have `guard_name` (default `web`). A `web` permission does not authorize an `api` user.
 
 ```php
-$user->assignRole('editor');
-$user->removeRole('editor');
-$user->syncRoles('editor', 'author');
+Role::findOrCreate('editor', 'api');
+Permission::findOrCreate('posts.view', 'api');
+```
 
-$user->hasRole('editor');
-$user->hasAnyRole('editor', 'admin');
-$user->hasAllRoles('editor', 'author');
+---
 
-$user->givePermissionTo('reports.export');
+## Temporary access and delegation
+
+```php
 $user->givePermissionTo('reports.export', expiresAt: now()->addDays(7));
-$user->revokePermissionTo('reports.export');
-$user->syncPermissions(['reports.export']);
-$user->delegate('invoice.approve', to: $manager, until: now()->addHours(4));
-
-$user->can('posts.update');
-$user->canAny(['posts.view', 'posts.create']);
-$user->canAll(['posts.view', 'posts.create']);
-
-$user->getRoleNames();
-$user->getPermissionNames();
-
-// Full access dump (roles + effective permissions + totals)
-$export = $user->exportAccess();
-$user->exportAccessJson();
+$user->givePermissionTo('reports.export', startsAt: now()->addDay(), expiresAt: now()->addWeek());
+$user->assignRole('contractor', expiresAt: now()->addHours(4));
 ```
 
-### User access export (kill feature)
+After expiry, `can()` is false with `EXPIRED_PERMISSION` or `DELEGATION_EXPIRED`.
 
-Export everything a user can do — assigned roles, direct permissions, wildcard-expanded effective permissions, grouped by resource/group, with totals.
+Delegation rules: delegator must hold the permission; no self-delegate; no re-delegate; only the delegator revokes; expired/revoked never authorize.
+
+---
+
+## Audit, history, versioning
 
 ```php
-$export = $user->exportAccess();
-
-$export['totals'];
-// roles, direct_permissions, assigned_permissions, effective_permissions, groups, resources
-
-$export['roles'];                 // each role + its permissions
-$export['direct_permissions'];
-$export['effective_permissions']; // name => source / via / group / resource
-$export['by_group'];
-$export['by_resource'];
+'audit' => [
+    'enabled' => true,
+    'decisions' => false, // every can() — leave off in production
+],
 ```
-
-```bash
-php artisan permission:export {userId} --type=App\\Models\\User --format=table
-php artisan permission:export 42 --format=json --path=storage/app/user-42-access.json
-```
-
-### Decisions
 
 ```php
-$decision = $user->authorizeFor('invoice.approve', $invoice);
-
-$decision->allowed(); // bool
-$decision->denied();  // bool
-$decision->reason;    // e.g. PERMISSION_MISSING
-$decision->source;    // e.g. engine | fake | role | direct
-$decision->toArray();
-
-$user->explain('invoice.approve', $invoice); // array form of Decision
+$permission->history();
+$permission->rollbackTo(1);
 ```
 
-#### Denial / allow reasons
-
-| Constant | Meaning |
-|----------|---------|
-| `ALLOWED` | Access granted |
-| `PERMISSION_MISSING` | No matching allow |
-| `ROLE_MISSING` | Required role not present |
-| `EXPLICIT_DENY` | Explicit deny rule / fake deny |
-| `EXPIRED_PERMISSION` | Time-bound access expired |
-| `TENANT_MISMATCH` | Wrong tenant context |
-| `SCOPE_MISMATCH` | Outside allowed scope |
-| `RESOURCE_DENIED` | Resource check failed |
-| `CONDITION_FAILED` | ABAC condition failed |
-| `POLICY_DENIED` | Laravel policy denied |
-| `DELEGATION_EXPIRED` | Delegated access expired |
-| `CONTEXT_MISSING` | Unsafe / incomplete context (fail closed) |
+Audit rows are append-only (no update / delete / soft delete).
 
 ---
 
 ## Middleware
 
-Registered aliases: `permission`, `role`.
+Aliases: `permission`, `role`.
 
 ```php
-Route::post('/posts', [PostController::class, 'store'])
-    ->middleware('permission:posts.create');
-
-Route::get('/admin', [AdminController::class, 'index'])
-    ->middleware('role:admin');
-
-// Multiple values (pipe-separated)
+Route::middleware('permission:posts.create')->group(...);
 Route::middleware('permission:posts.create|posts.update')->group(...);
 Route::middleware('role:admin|editor')->group(...);
 ```
-
-Logic defaults (config):
 
 ```php
 'middleware' => [
@@ -502,38 +476,48 @@ Logic defaults (config):
 @endcan
 
 @role('admin')
-    <p>Admin panel</p>
+    <p>Admin</p>
 @endrole
 
 @canall(['posts.view', 'posts.create'])
-    <p>Full author tools</p>
+    <p>Author tools</p>
 @endcanall
+
+@permissionPayload
+{{-- window.__LIBINKK_PERMISSION__ = {...} --}}
 ```
 
-Frontend checks are **UI-only**. Always enforce on the server.
+Frontend checks are **UI-only**.
 
-### Vue
+---
 
-Publish helpers (`php artisan vendor:publish --tag=libinkk-permission-frontend`) or import from the package:
+## Vue
+
+```bash
+php artisan vendor:publish --tag=libinkk-permission-frontend
+```
 
 ```js
-import { createPermissionPlugin, usePermission } from 'vendor/libinkk-permission/vue';
+import { createPermissionPlugin, usePermission } from '@/js/vendor/libinkk-permission/vue';
 
 app.use(createPermissionPlugin(window.__LIBINKK_PERMISSION__));
 ```
 
 ```vue
-<button v-if="$can('posts.create')">Create Post</button>
+<button v-if="$can('posts.create')">Create</button>
+<button v-if="$canAny(['posts.create', 'posts.update'])">Edit</button>
 ```
 
 ```js
 const { can, canAny, canAll, hasRole } = usePermission();
 ```
 
-### React
+---
+
+## React
 
 ```jsx
-import { PermissionProvider, usePermission, Can, CanAny, CanAll } from 'vendor/libinkk-permission/react';
+import { PermissionProvider, usePermission, Can, CanAny, CanAll } from '@/js/vendor/libinkk-permission/react';
 
 <PermissionProvider value={window.__LIBINKK_PERMISSION__}>
     <Can permission="posts.create"><CreatePostButton /></Can>
@@ -546,20 +530,15 @@ import { PermissionProvider, usePermission, Can, CanAny, CanAll } from 'vendor/l
 const { can, canAny, canAll, hasRole } = usePermission();
 ```
 
-### Authorization payload & API
+---
 
-Off by default. Enable `permission.frontend.enabled`.
+## Authorization API
+
+Off until `permission.frontend.enabled` is true.
 
 ```php
-permission_payload(); // current user — roles, permissions, denials, scopes, resources
+permission_payload(); // current user — UI only
 ```
-
-```blade
-@permissionPayload
-{{-- window.__LIBINKK_PERMISSION__ = {...} --}}
-```
-
-Optional HTTP endpoints (authenticated):
 
 ```http
 GET /api/authorization
@@ -567,308 +546,254 @@ GET /api/users/{user}/access
 GET /api/permissions/matrix
 ```
 
-`/api/users/{user}/access` is self-only unless `frontend.access_user_permission` is set and the viewer can that ability.
+`/access` is **self-only** unless `frontend.access_user_permission` is set (for example `users.access`) and the viewer `can()` that ability.
 
-Share into Blade / Inertia with `Libinkk\Permission\Frontend\ShareAuthorizationState` when `frontend.share` is true.
+---
 
-These payloads are **not** a security boundary.
+## Filament
 
-### Filament (optional)
-
-Filament is **not** a Composer requirement. Enable `permission.filament.enabled` when the host app uses Filament. Traits call `$user->can()` — the engine still enforces on the server.
+Not a Composer requirement. Set `filament.enabled` when Filament is installed.
 
 ```php
 use Libinkk\Permission\Filament\AuthorizesFilamentResource;
-use Libinkk\Permission\Filament\AuthorizesFilamentPage;
-use Libinkk\Permission\Filament\AuthorizesFilamentWidget;
-use Libinkk\Permission\Filament\AuthorizesFilamentRelationManager;
 use Libinkk\Permission\Filament\FilamentAuthorization;
-use Libinkk\Permission\Filament\PermissionFilamentPlugin;
 
 class PostResource extends Resource
 {
-    use AuthorizesFilamentResource; // posts.view / create / update / delete
+    use AuthorizesFilamentResource;
 
     protected static ?string $permissionResource = 'posts';
 }
 
-class ReportsPage extends Page
-{
-    use AuthorizesFilamentPage;
-
-    protected static ?string $permission = 'reports.view';
-}
-
 Action::make('approve')->visible(FilamentAuthorization::visible('invoice.approve'));
-TextInput::make('salary')->disabled(FilamentAuthorization::disabled('employees.salary.update'));
-TextColumn::make('salary')->visible(FilamentAuthorization::visible('employees.salary.view'));
 BulkAction::make('delete')->authorize(FilamentAuthorization::bulkCallback('posts.delete'));
-
-$panel->middleware(PermissionFilamentPlugin::middleware());
 ```
 
-Bulk mode: `filament.bulk = all` (every selected record) or `any` (partial). Tenant panels: set `filament.enabled` + `sync_tenant` so `AuthorizationContext::tenant(filament()->getTenant())` runs on `ServingFilament`.
+```php
+$panel->middleware(\Libinkk\Permission\Filament\PermissionFilamentPlugin::middleware());
+```
 
-Admin CRUD screens and the permission matrix UI stay in the optional Filament UI package. Use `FilamentAuthorization::debug()` on a custom page for the v0.8 debugger report.
+Admin CRUD / matrix UI is a separate package (`libinkk/permission-filament`). Use `FilamentAuthorization::debug()` on a custom page for the debugger report.
 
 ---
 
-## Discovery & PHP attributes
+## Discovery
 
 ```php
 use Libinkk\Permission\Attributes\Permission;
 
 class PostController
 {
-    #[Permission('posts.publish', description: 'Publish blog posts', group: 'Posts')]
-    public function publish()
-    {
-        //
-    }
+    #[Permission('posts.publish', description: 'Publish posts', group: 'Posts')]
+    public function publish() {}
 }
 ```
 
 ```bash
-php artisan permission:discover
-php artisan permission:discover --path=app/Actions --json
-php artisan permission:sync          # discover + create missing DB rows
+php artisan permission:discover --path=app/Http/Controllers
+php artisan permission:sync
 php artisan permission:sync --dry-run
 ```
 
-Configure extra scan paths in `config/permission.php` → `discovery.paths`.
-
 ---
 
-## Artisan commands
-
-| Command | Purpose |
-|---------|---------|
-| `permission:install` | Publish config (+ optional migrate / `--frontend`) |
-| `permission:resource` | Create resource permissions |
-| `permission:discover` | Scan `#[Permission]` attributes |
-| `permission:sync` | Persist discovered permissions |
-| `permission:validate` | Integrity checks (duplicates, orphans, conflicts) |
-| `permission:doctor` | Health report for the authorization system |
-| `permission:graph` | Role inheritance tree and per-role permissions |
-| `permission:unused` | Unused, inactive, or unreferenced permissions |
-| `permission:explain` | Why a user is allowed or denied a permission |
-| `permission:cache` | Warm registry / role permission caches |
-| `permission:cache:clear` | Invalidate authorization caches |
-| `permission:export` | Export a user's total roles & permissions |
-
----
-
-## Caching
-
-Lookup order:
-
-```text
-L1 request memory → L2 app cache store → database
-```
-
-Prefix: `libinkk:permission:v1` (configurable).
-
-Default TTLs:
-
-| Data | TTL (seconds) |
-|------|----------------|
-| Permissions / roles | `86400` |
-| User roles / permissions | `3600` |
-| Scopes | `1800` |
-| Decisions | `300` |
-
-User and role mutations flush the relevant cache entries. On Laravel Octane, request cache is flushed per request/task/tick.
-
-Configure via `config/permission.php` → `cache`.
-
----
-
-## Configuration
-
-Key options in `config/permission.php`:
+## Debugger and Artisan
 
 ```php
-return [
-    'enabled' => true,
-    'default_guard' => 'web',
-
-    'models' => [
-        'user' => env('AUTH_MODEL', App\Models\User::class),
-        'role' => Libinkk\Permission\Roles\Role::class,
-        'permission' => Libinkk\Permission\Permissions\Permission::class,
-    ],
-
-    'table_names' => [
-        'roles' => 'roles',
-        'permissions' => 'permissions',
-        'role_permissions' => 'role_permissions',
-        'user_roles' => 'user_roles',
-        'user_permissions' => 'user_permissions',
-    ],
-
-    'database' => [
-        'primary_key' => 'bigint', // bigint | uuid | ulid
-        'user_key' => 'bigint',
-    ],
-
-    'cache' => [
-        'enabled' => true,
-        'prefix' => 'libinkk:permission:v1',
-        'redis' => ['enabled' => false, 'store' => 'redis'],
-    ],
-
-    'teams' => ['enabled' => false],
-    'hierarchy' => ['enabled' => false],
-    'deny' => ['enabled' => false],
-    'delegation' => ['enabled' => true],
-    'versioning' => ['enabled' => true],
-    'audit' => ['enabled' => false, 'decisions' => false],
-    'frontend' => ['enabled' => false, 'routes' => true, 'prefix' => 'api'],
-    'debug' => ['enabled' => false, 'routes' => true, 'prefix' => 'api'],
-    'filament' => ['enabled' => false, 'sync_tenant' => true, 'bulk' => 'all'],
-];
+$report = $user->debugAuthorization('invoice.approve', $invoice);
+$report['final'];  // ALLOWED | DENIED
+$report['text'];
+$report['checks'];
 ```
 
-Set primary keys **before** migrating if you use UUID/ULID.
+```bash
+php artisan permission:install
+php artisan permission:resource posts
+php artisan permission:discover
+php artisan permission:sync
+php artisan permission:validate
+php artisan permission:doctor
+php artisan permission:graph --json
+php artisan permission:unused
+php artisan permission:explain {userId} invoice.approve
+php artisan permission:cache
+php artisan permission:cache:clear
+php artisan permission:export {userId}
+```
+
+`GET /api/authorization/explain?permission=…` is off until `debug.enabled`. Current user only. Not a grant.
 
 ---
 
-## Database tables
+## Bulk, cache, performance
 
-Core tables created by the package migration:
+```php
+$user->preloadAuthorization();
+$user->permissionsFor('posts');
+// ['view' => true, 'create' => true, 'update' => false, ...]
 
-| Table | Purpose |
-|-------|---------|
-| `roles` | Role definitions |
-| `permissions` | Permission definitions (`resource` / `action` / risk metadata) |
-| `role_permissions` | Role ↔ permission (`effect`: allow/deny) |
-| `user_roles` | Polymorphic user ↔ role (optional scope + expiry columns) |
-| `user_permissions` | Polymorphic user ↔ permission (effect + scope + expiry) |
-| `role_inheritances` | Parent role inherits child role permissions |
-| `permission_conditions` | Named/typed ABAC conditions per permission |
-| `permission_condition_values` | Structured values for conditions |
-| `scopes` | Hierarchical authorization boundaries |
-| `role_scopes` / `permission_scopes` / `user_scopes` | Scope membership |
-| `tenants` / `tenant_users` | Optional package-owned tenants (off by default) |
-| `permission_delegations` | Temporary delegated access (`pending` / `active` / `expired` / `revoked`) |
-| `permission_versions` | Permission definition snapshots for history and rollback |
-| `authorization_audits` | Append-only authorization and assignment history |
+$decisions = $user->authorizeMany('posts.update', $posts);
+```
 
-Soft deletes apply to roles and permissions only — never to audit rows.
+```text
+L1 request memory → L2 app cache → optional L3 Redis → database
+```
 
----
+Prefix: `libinkk:permission:v1`. Redis L3 is off until `cache.redis.enabled` is true.
 
-## Events
+| Data | Default TTL |
+|------|-------------|
+| Permissions / roles | 86400 |
+| User roles / permissions | 3600 |
+| Scopes | 1800 |
+| Decisions | 300 |
 
-| Event | When |
-|-------|------|
-| `RoleCreated` / `RoleUpdated` / `RoleDeleted` | Role lifecycle |
-| `PermissionCreated` / `PermissionUpdated` / `PermissionDeleted` | Permission lifecycle |
-| `RoleAssigned` / `RoleRemoved` | User role changes |
-| `PermissionGranted` / `PermissionRevoked` | User direct permission changes |
-| `AuthorizationAllowed` / `AuthorizationDenied` | Decision outcomes (when emitted by the engine path) |
-| `DelegationCreated` / `DelegationRevoked` | Delegation lifecycle |
-| `PolicyChanged` | Permission definition snapshot / rollback |
+Mutations invalidate after DB commit. Octane and queue workers flush request state each cycle.
+
+Details: [docs/benchmarks.md](docs/benchmarks.md).
 
 ---
 
 ## Testing
 
-### Fake permissions
-
 ```php
 use Libinkk\Permission\Permissions\Permission;
+use Libinkk\Permission\Testing\InteractsWithAuthorization;
 
 Permission::fake();
 Permission::allow('posts.create');
 Permission::deny('posts.delete');
 
-$this->assertTrue($user->can('posts.create'));
-$this->assertFalse($user->can('posts.delete'));
+$this->assertCan($user, 'posts.update');
+$this->assertCannot($user, 'posts.delete', $post);
 ```
 
-### Assertions
-
-```php
-use Libinkk\Permission\Testing\InteractsWithAuthorization;
-
-class ExampleTest extends TestCase
-{
-    use InteractsWithAuthorization;
-
-    public function test_editor_can_update_posts(): void
-    {
-        $user->assignRole('editor');
-
-        $this->assertCan($user, 'posts.update');
-        $this->assertCannot($user, 'posts.delete');
-    }
-}
-```
-
-Run the package test suite:
+`Permission::fake()` is disabled in production unless `permission.testing.allow_fake` is true.
 
 ```bash
 composer test
-# or
-vendor/bin/phpunit
+vendor/bin/phpunit --no-coverage
 ```
 
 ---
 
-## Security principles
+## Security
 
-1. **Fail closed** — if authorization cannot be determined safely, return DENY.
-2. **Database is source of truth** — cache is a performance layer only.
-3. **Never trust Blade / Vue / React / Filament** for enforcement.
-4. **No privilege escalation** via cache, fakes in production, or client payloads.
-5. **Tenant isolation** (when teams/tenants are enabled) must hold in queries, cache keys, and decisions.
+1. Fail closed.
+2. Database is source of truth.
+3. Never trust Blade / Vue / React / Filament for enforcement.
+4. No privilege escalation via cache, fakes, or client payloads.
+5. Tenant isolation when teams are on.
 
-Internal assessment (not a third-party cert): [SECURITY-CERTIFICATE.md](SECURITY-CERTIFICATE.md) — **7.4 / 10**, conditional pass (`LPK-SEC-2026-0905-V1`).
+See [SECURITY.md](SECURITY.md). Internal scorecard: [SECURITY-CERTIFICATE.md](SECURITY-CERTIFICATE.md) (7.4 / 10, not a third-party cert).
+
+Production settings: [docs/deployment.md](docs/deployment.md).
+
+### Configuration (defaults)
+
+```php
+return [
+    'enabled' => true,
+    'default_guard' => 'web',
+    'database' => [
+        'primary_key' => 'bigint', // bigint | uuid | ulid
+        'user_key' => 'bigint',
+    ],
+    'cache' => [
+        'enabled' => true,
+        'prefix' => 'libinkk:permission:v1',
+        'redis' => ['enabled' => false, 'store' => 'redis'],
+        'decision_cache' => ['enabled' => true],
+    ],
+    'teams' => ['enabled' => false, 'require_context' => false],
+    'hierarchy' => ['enabled' => true],
+    'deny' => ['enabled' => true],
+    'delegation' => ['enabled' => true],
+    'versioning' => ['enabled' => true],
+    'audit' => ['enabled' => false, 'decisions' => false],
+    'frontend' => ['enabled' => false],
+    'debug' => ['enabled' => false],
+    'filament' => ['enabled' => false],
+    'testing' => ['allow_fake' => false],
+];
+```
 
 ---
 
-## Package layout
+## Troubleshooting
+
+| Symptom | Check |
+|---------|--------|
+| Always deny | `permission.enabled`, user trait, `permission:doctor` |
+| Tenant deny | `AuthorizationContext::tenant()` on the request; `teams.require_context` |
+| Stale allow after revoke | `permission:cache:clear`; confirm after-commit ran |
+| Wildcard too wide | Wildcards do not cross resources; prefer exact + deny |
+| Delegation not working | Delegator must `can()` the permission now; not expired; not self |
+| Fake in production | Blocked unless `testing.allow_fake` |
+| Explain 404 | `debug.enabled` is false (default) |
+| Frontend 404 | `frontend.enabled` is false (default) |
+| UUID attach failed | Upgrade to 1.0 pivot id generation; set key type before first migrate |
+
+```bash
+php artisan permission:doctor --json
+php artisan permission:validate
+php artisan permission:explain {id} posts.delete --json
+```
+
+---
+
+## Architecture
 
 ```text
-src/
-├── Attributes/      PHP #[Permission] attribute
-├── Authorization/   Engine, Context, Decision, Precedence, ExpirationChecker, UserAccessExporter
-├── Roles/           Role, RoleManager, RoleHierarchy
-├── Scopes/          Scope, ScopeResolver, ScopeHierarchy, Tenant
-├── Permissions/     Permission, versions, history, Manager, Registry, Resolver
-├── Conditions/      Condition, ConditionRegistry, ConditionResolver, OwnershipChecker
-├── Delegation/      Delegation, DelegationManager
-├── Audit/           AuthorizationAudit, AuditLogger
-├── Frontend/        Payload, matrix, API, Inertia/Blade share
-├── Filament/        Optional resource/page/widget/relation/tenant adapter
-├── Debug/           Debugger, graph, unused finder, Telescope/DebugBar hooks
-├── Discovery/       AttributeScanner, PermissionDiscovery
-├── Cache/           PermissionCache, DecisionCache, PermissionFake, preloader, metrics
-├── Commands/        Artisan DX commands
-├── Concerns/        HasAuthorization
-├── Contracts/       Engine, repositories, cache, AuditLogger
-├── Events/
-├── Middleware/
-├── Providers/
-├── Repositories/
-├── Support/         WildcardMatcher, PermissionValidator, PermissionDoctor
-└── Testing/
+Request → Gate / middleware / $user->can()
+        → AuthorizationEngine (fail closed)
+        → roles, directs, hierarchy, deny, conditions, expiry, delegation
+        → Decision { allowed, reason, source, checks }
+        → L1 / L2 / L3 cache
+        → Blade / Vue / React / Filament  (UI only)
 ```
 
-Optional UI package (planned): `libinkk/permission-filament`.
+### Tables
+
+| Table | Purpose |
+|-------|---------|
+| `roles` / `permissions` | Definitions |
+| `role_permissions` | Role ↔ permission (`allow` / `deny`) |
+| `user_roles` / `user_permissions` | Polymorphic assignments + expiry |
+| `role_inheritances` | Hierarchy |
+| `permission_conditions` / `permission_condition_values` | ABAC |
+| `scopes` / `*_scopes` | Hierarchical boundaries |
+| `tenants` / `tenant_users` | Optional package tenants |
+| `permission_delegations` | Delegated access |
+| `permission_versions` | Snapshots |
+| `authorization_audits` | Append-only log |
+
+Soft deletes: roles and permissions only.
+
+### Events
+
+`RoleCreated` / `Updated` / `Deleted`, `PermissionCreated` / `Updated` / `Deleted`, `RoleAssigned` / `Removed`, `PermissionGranted` / `Revoked`, `AuthorizationAllowed` / `Denied`, `DelegationCreated` / `Revoked`, `PolicyChanged`.
+
+### Roadmap
+
+| Version | Status |
+|---------|--------|
+| v0.1 – v0.9 | Shipped in 1.0 |
+| **v1.0** | Docs, upgrade guide, CI matrix, production guide ✅ |
+
+### Package layout
+
+```text
+src/   Authorization, Roles, Permissions, Conditions, Scopes,
+       Delegation, Audit, Frontend, Filament, Debug, Cache, Commands
+```
 
 ---
 
 ## Ecosystem
 
-Designed to integrate with the Libinkk stack (OneAuth, Modular, API Starter) without replacing your auth or tenant models.
+Integrates with Libinkk OneAuth, Modular, and API Starter without replacing auth or tenant models.
 
 - Homepage: [https://www.libinkk.in](https://www.libinkk.in)
 - Support: libinkk1999@gmail.com
-
----
-
-## License
-
-MIT © [Libin K K](https://www.libinkk.in)
+- License: MIT © [Libin K K](https://www.libinkk.in)
