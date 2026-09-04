@@ -135,6 +135,26 @@ return [
 
     'filament' => [
         'enabled' => false,
+        'sync_tenant' => true,
+        'navigation' => true,
+        'bulk' => 'all', // all = every selected record; any = partial allowed
+        'actions' => [
+            'viewAny' => 'view',
+            'view' => 'view',
+            'create' => 'create',
+            'update' => 'update',
+            'delete' => 'delete',
+            'deleteAny' => 'delete',
+            'restore' => 'restore',
+            'restoreAny' => 'restore',
+            'forceDelete' => 'force-delete',
+            'forceDeleteAny' => 'force-delete',
+            'replicate' => 'create',
+            'attach' => 'attach',
+            'detach' => 'detach',
+            'associate' => 'associate',
+            'dissociate' => 'dissociate',
+        ],
     ],
 
     'discovery' => [

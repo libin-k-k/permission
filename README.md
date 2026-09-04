@@ -101,7 +101,7 @@ $user->explain('posts.delete');
 
 ## Features
 
-### Available now (v0.6)
+### Available now (v0.7)
 
 - **Temporary access** — `$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7))`
 - **Scheduled grants** — `startsAt` / `expiresAt` on user permissions and roles
@@ -130,6 +130,7 @@ $user->explain('posts.delete');
 - **Blade** — `@can`, `@role`, `@canany`, `@canall`, `@permissionPayload`
 - **Vue / React** — `$can` / `usePermission()` / `<Can>` (UI-only)
 - **Authorization API** — `GET /api/authorization`, `/api/users/{user}/access`, `/api/permissions/matrix`
+- **Filament adapter** — optional traits for resources, pages, widgets, relation managers, actions, forms, tables, bulk, tenant sync
 - **Explainable decisions** — `Decision` + condition checks + deny layers
 - **Layered cache** — request-level + store cache, Octane-safe flush
 - **Multi-guard** — `guard_name` on roles/permissions and users
@@ -147,7 +148,7 @@ $user->explain('posts.delete');
 | **v0.4** | Tenants, hierarchical scopes, authorization context ✅ |
 | **v0.5** | Temporary access, delegation, audit logs, versioning ✅ |
 | **v0.6** | Vue / React adapters, authorization API payloads ✅ |
-| **v0.7** | Optional Filament adapter (`libinkk/permission-filament`) |
+| **v0.7** | Optional Filament adapter (no Filament Composer dependency) ✅ |
 | **v0.8+** | Debugger, graph, unused permissions, performance & security hardening |
 | **v1.0** | Stable docs, upgrade guide, compatibility matrix |
 
@@ -531,6 +532,44 @@ Share into Blade / Inertia with `Libinkk\Permission\Frontend\ShareAuthorizationS
 
 These payloads are **not** a security boundary.
 
+### Filament (optional)
+
+Filament is **not** a Composer requirement. Enable `permission.filament.enabled` when the host app uses Filament. Traits call `$user->can()` — the engine still enforces on the server.
+
+```php
+use Libinkk\Permission\Filament\AuthorizesFilamentResource;
+use Libinkk\Permission\Filament\AuthorizesFilamentPage;
+use Libinkk\Permission\Filament\AuthorizesFilamentWidget;
+use Libinkk\Permission\Filament\AuthorizesFilamentRelationManager;
+use Libinkk\Permission\Filament\FilamentAuthorization;
+use Libinkk\Permission\Filament\PermissionFilamentPlugin;
+
+class PostResource extends Resource
+{
+    use AuthorizesFilamentResource; // posts.view / create / update / delete
+
+    protected static ?string $permissionResource = 'posts';
+}
+
+class ReportsPage extends Page
+{
+    use AuthorizesFilamentPage;
+
+    protected static ?string $permission = 'reports.view';
+}
+
+Action::make('approve')->visible(FilamentAuthorization::visible('invoice.approve'));
+TextInput::make('salary')->disabled(FilamentAuthorization::disabled('employees.salary.update'));
+TextColumn::make('salary')->visible(FilamentAuthorization::visible('employees.salary.view'));
+BulkAction::make('delete')->authorize(FilamentAuthorization::bulkCallback('posts.delete'));
+
+$panel->middleware(PermissionFilamentPlugin::middleware());
+```
+
+Bulk mode: `filament.bulk = all` (every selected record) or `any` (partial). Tenant panels: set `filament.enabled` + `sync_tenant` so `AuthorizationContext::tenant(filament()->getTenant())` runs on `ServingFilament`.
+
+Admin CRUD screens, permission matrix UI, and the debugger are not in this slice (debugger is v0.8).
+
 ---
 
 ## Discovery & PHP attributes
@@ -641,7 +680,7 @@ return [
     'versioning' => ['enabled' => true],
     'audit' => ['enabled' => false, 'decisions' => false],
     'frontend' => ['enabled' => false, 'routes' => true, 'prefix' => 'api'],
-    'filament' => ['enabled' => false],
+    'filament' => ['enabled' => false, 'sync_tenant' => true, 'bulk' => 'all'],
 ];
 ```
 
@@ -755,6 +794,7 @@ src/
 ├── Delegation/      Delegation, DelegationManager
 ├── Audit/           AuthorizationAudit, AuditLogger
 ├── Frontend/        Payload, matrix, API, Inertia/Blade share
+├── Filament/        Optional resource/page/widget/relation/tenant adapter
 ├── Discovery/       AttributeScanner, PermissionDiscovery
 ├── Cache/           PermissionCache, DecisionCache, PermissionFake
 ├── Commands/        Artisan DX commands

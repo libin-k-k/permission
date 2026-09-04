@@ -32,6 +32,7 @@ use Libinkk\Permission\Contracts\PermissionCache as PermissionCacheContract;
 use Libinkk\Permission\Contracts\PermissionRepository as PermissionRepositoryContract;
 use Libinkk\Permission\Contracts\RoleRepository as RoleRepositoryContract;
 use Libinkk\Permission\Delegation\DelegationManager;
+use Libinkk\Permission\Filament\SyncFilamentTenantContext;
 use Libinkk\Permission\Frontend\FrontendPayload;
 use Libinkk\Permission\Frontend\PermissionMatrix;
 use Libinkk\Permission\Events\AuthorizationAllowed;
@@ -120,6 +121,7 @@ class PermissionServiceProvider extends ServiceProvider
         $this->registerMiddleware();
         $this->registerBlade();
         $this->registerAuditListeners();
+        $this->registerFilament();
         $this->registerOctaneFlush();
     }
 
@@ -228,6 +230,23 @@ class PermissionServiceProvider extends ServiceProvider
         $events->listen(PolicyChanged::class, [AuditLogger::class, 'handlePolicyChanged']);
         $events->listen(AuthorizationAllowed::class, [AuditLogger::class, 'handleAuthorizationAllowed']);
         $events->listen(AuthorizationDenied::class, [AuditLogger::class, 'handleAuthorizationDenied']);
+    }
+
+    protected function registerFilament(): void
+    {
+        if (! config('permission.filament.enabled', false)) {
+            return;
+        }
+
+        $event = 'Filament\\Events\\ServingFilament';
+
+        if (! class_exists($event)) {
+            return;
+        }
+
+        $this->app->make('events')->listen($event, function () {
+            $this->app->make(SyncFilamentTenantContext::class)->sync();
+        });
     }
 
     protected function registerOctaneFlush(): void
