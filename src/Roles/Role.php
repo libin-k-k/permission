@@ -119,7 +119,7 @@ class Role extends Model
         $sync = [];
 
         foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
-            $sync[$permission->getKey()] = ['effect' => 'allow'];
+            $sync[$permission->getKey()] = \Libinkk\Permission\Support\ConfiguredKey::withId(['effect' => 'allow']);
         }
 
         $this->permissions()->sync($sync);
@@ -156,7 +156,7 @@ class Role extends Model
 
         foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
             $this->permissions()->syncWithoutDetaching([
-                $permission->getKey() => ['effect' => $effect],
+                $permission->getKey() => \Libinkk\Permission\Support\ConfiguredKey::withId(['effect' => $effect]),
             ]);
         }
 

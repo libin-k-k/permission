@@ -35,6 +35,8 @@ class PermissionCache implements PermissionCacheContract
     public function remember(string $key, string $ttlType, Closure $callback, bool $persistent = true): mixed
     {
         if (array_key_exists($key, $this->request)) {
+            $this->metrics()->hit('l1');
+
             return $this->request[$key];
         }
 
@@ -50,28 +52,22 @@ class PermissionCache implements PermissionCacheContract
             }
 
             $fullKey = $this->fullKey($key);
+            $cached = $this->persistentGet($fullKey);
 
-            try {
-                $cached = $this->store()->get($fullKey);
-
-                if ($cached !== null) {
-                    return $this->request[$key] = $cached;
-                }
-            } catch (Throwable) {
-                return $this->request[$key] = $callback();
+            if ($cached !== null) {
+                return $this->request[$key] = $cached;
             }
 
             try {
                 $value = $this->withLock($fullKey, function () use ($fullKey, $ttlType, $callback) {
-                    $store = $this->store();
-                    $cached = $store->get($fullKey);
+                    $cached = $this->persistentGet($fullKey, recordMiss: false);
 
                     if ($cached !== null) {
                         return $cached;
                     }
 
                     $value = $callback();
-                    $store->put($fullKey, $value, $this->ttl($ttlType));
+                    $this->persistentPut($fullKey, $value, $ttlType);
 
                     return $value;
                 });
@@ -88,6 +84,8 @@ class PermissionCache implements PermissionCacheContract
     public function get(string $key, bool $persistent = true): mixed
     {
         if (array_key_exists($key, $this->request)) {
+            $this->metrics()->hit('l1');
+
             return $this->request[$key];
         }
 
@@ -95,11 +93,7 @@ class PermissionCache implements PermissionCacheContract
             return null;
         }
 
-        try {
-            $cached = $this->store()->get($this->fullKey($key));
-        } catch (Throwable) {
-            return null;
-        }
+        $cached = $this->persistentGet($this->fullKey($key));
 
         if ($cached !== null) {
             $this->request[$key] = $cached;
@@ -116,11 +110,7 @@ class PermissionCache implements PermissionCacheContract
             return;
         }
 
-        try {
-            $this->store()->put($this->fullKey($key), $value, $this->ttl($ttlType));
-        } catch (Throwable) {
-            // Cache write failures must never change the authorization outcome.
-        }
+        $this->persistentPut($this->fullKey($key), $value, $ttlType);
     }
 
     public function forget(string $key): void
@@ -128,11 +118,15 @@ class PermissionCache implements PermissionCacheContract
         unset($this->request[$key]);
         $this->dirty[$key] = true;
 
+        $this->metrics()->invalidated();
+
         $this->afterCommit(function () use ($key) {
-            try {
-                $this->store()->forget($this->fullKey($key));
-            } catch (Throwable) {
-                // Cache store failures must never grant access.
+            foreach ($this->stores() as $store) {
+                try {
+                    $store->forget($this->fullKey($key));
+                } catch (Throwable) {
+                    // Cache store failures must never grant access.
+                }
             }
 
             unset($this->dirty[$key]);
@@ -247,6 +241,88 @@ class PermissionCache implements PermissionCacheContract
         return Cache::store();
     }
 
+    /**
+     * L2 application cache, then optional L3 Redis (explicit opt-in).
+     *
+     * @return array<string, Repository>
+     */
+    protected function stores(): array
+    {
+        $stores = ['l2' => $this->store()];
+
+        if (! config('permission.cache.redis.enabled', false)) {
+            return $stores;
+        }
+
+        $name = (string) config('permission.cache.redis.store', 'redis');
+        $l2Name = (string) (config('permission.cache.store') ?: config('cache.default'));
+
+        if ($name === '' || $name === $l2Name) {
+            return $stores;
+        }
+
+        try {
+            $stores['l3'] = Cache::store($name);
+        } catch (Throwable) {
+            return $stores;
+        }
+
+        return $stores;
+    }
+
+    protected function persistentGet(string $fullKey, bool $recordMiss = true): mixed
+    {
+        foreach ($this->stores() as $layer => $store) {
+            try {
+                $cached = $store->get($fullKey);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if ($cached === null) {
+                continue;
+            }
+
+            $this->metrics()->hit($layer);
+
+            if ($layer === 'l3') {
+                try {
+                    $this->store()->put($fullKey, $cached, $this->ttl('permissions'));
+                } catch (Throwable) {
+                    // Write-back is optional.
+                }
+            }
+
+            return $cached;
+        }
+
+        if ($recordMiss) {
+            $this->metrics()->miss();
+        }
+
+        return null;
+    }
+
+    protected function persistentPut(string $fullKey, mixed $value, string $ttlType): void
+    {
+        foreach ($this->stores() as $store) {
+            try {
+                $store->put($fullKey, $value, $this->ttl($ttlType));
+            } catch (Throwable) {
+                // Cache write failures must never change the authorization outcome.
+            }
+        }
+    }
+
+    protected function metrics(): CacheMetrics
+    {
+        if (function_exists('app') && app()->bound(CacheMetrics::class)) {
+            return app(CacheMetrics::class);
+        }
+
+        return new CacheMetrics;
+    }
+
     protected function withLock(string $fullKey, Closure $callback): mixed
     {
         if (! config('permission.cache.lock.enabled', true)) {
@@ -276,12 +352,7 @@ class PermissionCache implements PermissionCacheContract
         $this->dirty[$key] = true;
 
         $this->afterCommit(function () use ($key, $next) {
-            try {
-                $this->store()->put($this->fullKey($key), $next, $this->ttl('permissions'));
-            } catch (Throwable) {
-                // Cache store failures must never grant access.
-            }
-
+            $this->persistentPut($this->fullKey($key), $next, 'permissions');
             unset($this->dirty[$key]);
         });
 

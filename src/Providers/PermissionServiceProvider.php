@@ -10,9 +10,11 @@ use Libinkk\Permission\Audit\AuditLogger;
 use Libinkk\Permission\Authorization\AuthorizationEngine;
 use Libinkk\Permission\Authorization\ExpirationChecker;
 use Libinkk\Permission\Authorization\UserAccessExporter;
+use Libinkk\Permission\Cache\CacheMetrics;
 use Libinkk\Permission\Cache\DecisionCache;
 use Libinkk\Permission\Cache\PermissionCache;
 use Libinkk\Permission\Cache\PermissionFake;
+use Libinkk\Permission\Cache\PermissionPreloader;
 use Libinkk\Permission\Commands\CacheCommand;
 use Libinkk\Permission\Commands\ClearCacheCommand;
 use Libinkk\Permission\Commands\DiscoverCommand;
@@ -93,6 +95,8 @@ class PermissionServiceProvider extends ServiceProvider
         $this->app->singleton(PermissionManager::class);
         $this->app->singleton(RoleManager::class);
         $this->app->singleton(DecisionCache::class);
+        $this->app->singleton(CacheMetrics::class);
+        $this->app->singleton(PermissionPreloader::class);
         $this->app->singleton(AttributeScanner::class);
         $this->app->singleton(PermissionDiscovery::class);
         $this->app->singleton(PermissionValidator::class);
@@ -140,6 +144,7 @@ class PermissionServiceProvider extends ServiceProvider
         $this->registerDebugIntegrations();
         $this->registerFilament();
         $this->registerOctaneFlush();
+        $this->registerQueueFlush();
     }
 
     protected function registerBuiltinConditions(): void
@@ -325,22 +330,47 @@ class PermissionServiceProvider extends ServiceProvider
                 continue;
             }
 
-            $this->app->make('events')->listen($event, function () {
-                if ($this->app->bound(PermissionCacheContract::class)) {
-                    $this->app->make(PermissionCacheContract::class)->flushRequestCache();
-                }
+            $this->app->make('events')->listen($event, fn () => $this->flushWorkerState());
+        }
+    }
 
-                if ($this->app->bound(ConditionRegistry::class)) {
-                    $this->app->make(ConditionRegistry::class)->flush();
-                }
+    protected function registerQueueFlush(): void
+    {
+        $events = [
+            'Illuminate\\Queue\\Events\\JobProcessing',
+            'Illuminate\\Queue\\Events\\JobProcessed',
+            'Illuminate\\Queue\\Events\\JobFailed',
+            'Illuminate\\Queue\\Events\\Looping',
+        ];
 
-                \Libinkk\Permission\Authorization\AuthorizationContext::flush();
-                PermissionFake::reset();
+        foreach ($events as $event) {
+            if (! class_exists($event)) {
+                continue;
+            }
 
-                if ($this->app->bound(DecisionRecorder::class)) {
-                    $this->app->make(DecisionRecorder::class)->flush();
-                }
-            });
+            $this->app->make('events')->listen($event, fn () => $this->flushWorkerState());
+        }
+    }
+
+    protected function flushWorkerState(): void
+    {
+        if ($this->app->bound(PermissionCacheContract::class)) {
+            $this->app->make(PermissionCacheContract::class)->flushRequestCache();
+        }
+
+        if ($this->app->bound(ConditionRegistry::class)) {
+            $this->app->make(ConditionRegistry::class)->flush();
+        }
+
+        if ($this->app->bound(CacheMetrics::class)) {
+            $this->app->make(CacheMetrics::class)->flush();
+        }
+
+        \Libinkk\Permission\Authorization\AuthorizationContext::flush();
+        PermissionFake::reset();
+
+        if ($this->app->bound(DecisionRecorder::class)) {
+            $this->app->make(DecisionRecorder::class)->flush();
         }
     }
 }

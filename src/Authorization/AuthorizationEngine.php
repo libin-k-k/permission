@@ -276,6 +276,7 @@ class AuthorizationEngine implements AuthorizationEngineContract
         }
 
         $decision->scope = $scopeLabel;
+        $this->attachIdentity($decision, $user);
 
         $ephemeral = ($decision->source === 'delegation')
             || in_array($decision->reason, [
@@ -294,6 +295,78 @@ class AuthorizationEngine implements AuthorizationEngineContract
         }
 
         return $decision;
+    }
+
+    /**
+     * @param  iterable<mixed>  $resources
+     * @return list<array{resource: mixed, allowed: bool, decision: Decision}>
+     */
+    public function decideMany(object $user, string $permission, iterable $resources): array
+    {
+        $guard = $this->guardFor($user);
+        $this->resolver->permissionMapFor($user, $guard);
+
+        $results = [];
+
+        foreach ($resources as $resource) {
+            $decision = $this->decide($user, $permission, [$resource]);
+            $results[] = [
+                'resource' => $resource,
+                'allowed' => $decision->allowed(),
+                'decision' => $decision,
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    public function permissionsFor(object $user, string $resource): array
+    {
+        $guard = $this->guardFor($user);
+        $actions = [];
+
+        foreach ($this->resolver->registry($guard) as $name => $meta) {
+            $bucket = $meta['resource'] ?? (str_contains($name, '.') ? explode('.', $name, 2)[0] : $name);
+
+            if ((string) $bucket !== $resource) {
+                continue;
+            }
+
+            $action = $meta['action'] ?? (str_contains($name, '.') ? explode('.', $name, 2)[1] : $name);
+            $actions[(string) $action] = $this->allows($user, $name);
+        }
+
+        ksort($actions);
+
+        return $actions;
+    }
+
+    protected function attachIdentity(Decision $decision, object $user): void
+    {
+        if (! AuthorizationContext::isImpersonating()) {
+            return;
+        }
+
+        $original = AuthorizationContext::impersonator();
+
+        $decision->metadata['impersonating'] = true;
+        $decision->metadata['original_user'] = $this->identityKey($original);
+        $decision->metadata['effective_user'] = $this->identityKey($user);
+    }
+
+    protected function identityKey(mixed $user): ?string
+    {
+        if (! is_object($user)) {
+            return null;
+        }
+
+        $type = method_exists($user, 'getMorphClass') ? $user->getMorphClass() : $user::class;
+        $id = method_exists($user, 'getKey') ? $user->getKey() : null;
+
+        return $id !== null ? $type.':'.$id : $type;
     }
 
     protected function guardFor(object $user): string

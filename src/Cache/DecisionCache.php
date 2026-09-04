@@ -37,14 +37,33 @@ class DecisionCache
 
     public function keyFor(string $userKey, string $permission, string $guard, ?string $resourceKey): string
     {
+        $tenant = \Libinkk\Permission\Authorization\AuthorizationContext::currentTarget();
+        $tenantKey = $this->tenantKey($tenant);
+
         $payload = implode('|', [
             $userKey,
             $guard,
             $permission,
+            $tenantKey,
             $resourceKey ?? '',
         ]);
 
-        return 'authz:'.sha1($payload);
+        return 'authz:'.$tenantKey.':'.sha1($payload);
+    }
+
+    protected function tenantKey(mixed $tenant): string
+    {
+        if ($tenant === null) {
+            return 'global';
+        }
+
+        if (is_object($tenant) && method_exists($tenant, 'getKey')) {
+            $type = method_exists($tenant, 'getMorphClass') ? $tenant->getMorphClass() : $tenant::class;
+
+            return sha1($type.':'.$tenant->getKey());
+        }
+
+        return sha1((string) $tenant);
     }
 
     protected function persistentEnabled(): bool

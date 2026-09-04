@@ -36,11 +36,13 @@ class RoleHierarchy
             throw CircularRoleInheritanceException::for($parentRole->slug, $childRole->slug);
         }
 
-        DB::table(Tables::roleInheritances())->insertOrIgnore([
-            'parent_role_id' => $parentRole->getKey(),
-            'child_role_id' => $childRole->getKey(),
-            'created_at' => now(),
-        ]);
+        DB::table(Tables::roleInheritances())->insertOrIgnore(
+            \Libinkk\Permission\Support\ConfiguredKey::withId([
+                'parent_role_id' => $parentRole->getKey(),
+                'child_role_id' => $childRole->getKey(),
+                'created_at' => now(),
+            ])
+        );
 
         $this->forget($parentRole->slug);
         $this->forget($childRole->slug);

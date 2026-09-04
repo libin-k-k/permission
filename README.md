@@ -101,7 +101,7 @@ $user->explain('posts.delete');
 
 ## Features
 
-### Available now (v0.8)
+### Available now (v0.9)
 
 - **Temporary access** — `$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7))`
 - **Scheduled grants** — `startsAt` / `expiresAt` on user permissions and roles
@@ -136,7 +136,10 @@ $user->explain('posts.delete');
 - **Unused permissions** — `permission:unused`
 - **Telescope / DebugBar** — optional recorders when those packages are installed (`debug.enabled`)
 - **Explainable decisions** — `Decision` + condition checks + deny layers
-- **Layered cache** — request-level + store cache, Octane-safe flush
+- **Layered cache** — L1 request → L2 store → optional L3 Redis (opt-in), after-commit invalidation
+- **Bulk authorization** — `$user->authorizeMany()` / `$user->permissionsFor('posts')` / `$user->preloadAuthorization()`
+- **Octane / queue flush** — request, tenant, impersonation, and fake state reset per worker cycle
+- **UUID / ULID keys** — `permission.database.primary_key`
 - **Multi-guard** — `guard_name` on roles/permissions and users
 - **Configurable keys** — `bigint`, UUID, or ULID
 - **Testing helpers** — `Permission::fake()`, `assertCan` / `assertCannot`
@@ -154,7 +157,7 @@ $user->explain('posts.delete');
 | **v0.6** | Vue / React adapters, authorization API payloads ✅ |
 | **v0.7** | Optional Filament adapter (no Filament Composer dependency) ✅ |
 | **v0.8** | Debugger, graph, unused permissions, CLI explain, Telescope/DebugBar hooks ✅ |
-| **v0.9** | Performance, Octane/queue safety, security review |
+| **v0.9** | Redis L3 opt-in, preload/bulk APIs, Octane/queue flush, UUID/ULID, cache metrics ✅ |
 | **v1.0** | Stable docs, upgrade guide, compatibility matrix |
 
 Schema columns for scopes, expiration, and effects are already present where needed so later slices can land without breaking migrations.
@@ -350,6 +353,20 @@ php artisan permission:unused
 ```
 
 `GET /api/authorization/explain?permission=invoice.approve` is off until `permission.debug.enabled` is true. It explains the **current user only** and is not a grant. Telescope and DebugBar hooks register only when those packages exist.
+
+### Bulk & preload (v0.9)
+
+```php
+$user->preloadAuthorization();
+
+$user->permissionsFor('posts');
+// ['view' => true, 'create' => true, 'update' => false, ...]
+
+$decisions = $user->authorizeMany('posts.update', $posts);
+AuthorizationContext::impersonating($admin); // audit identity only — not a grant
+```
+
+Redis L3 is off until `permission.cache.redis.enabled` is true. Octane and queue workers flush request cache, tenant/scope, impersonation, and `Permission::fake()` on each cycle.
 
 ---
 
@@ -697,7 +714,7 @@ return [
     'cache' => [
         'enabled' => true,
         'prefix' => 'libinkk:permission:v1',
-        // ...
+        'redis' => ['enabled' => false, 'store' => 'redis'],
     ],
 
     'teams' => ['enabled' => false],
@@ -827,7 +844,7 @@ src/
 ├── Filament/        Optional resource/page/widget/relation/tenant adapter
 ├── Debug/           Debugger, graph, unused finder, Telescope/DebugBar hooks
 ├── Discovery/       AttributeScanner, PermissionDiscovery
-├── Cache/           PermissionCache, DecisionCache, PermissionFake
+├── Cache/           PermissionCache, DecisionCache, PermissionFake, preloader, metrics
 ├── Commands/        Artisan DX commands
 ├── Concerns/        HasAuthorization
 ├── Contracts/       Engine, repositories, cache, AuditLogger

@@ -62,7 +62,7 @@ trait HasAuthorization
 
         foreach ($this->normalizeRoles($roles, $guard) as $role) {
             $this->roles()->syncWithoutDetaching([
-                $role->getKey() => $pivot,
+                $role->getKey() => \Libinkk\Permission\Support\ConfiguredKey::withId($pivot),
             ]);
 
             event(new RoleAssigned($this, $role));
@@ -117,7 +117,7 @@ trait HasAuthorization
         $pivot = $this->assignmentPivot(array_merge($this->scopePivot($scope), $options));
 
         foreach ($models as $role) {
-            $sync[$role->getKey()] = $pivot;
+            $sync[$role->getKey()] = \Libinkk\Permission\Support\ConfiguredKey::withId($pivot);
         }
 
         if ($scope !== null) {
@@ -131,7 +131,7 @@ trait HasAuthorization
 
             foreach ($models as $role) {
                 $this->roles()->syncWithoutDetaching([
-                    $role->getKey() => $pivot,
+                    $role->getKey() => \Libinkk\Permission\Support\ConfiguredKey::withId($pivot),
                 ]);
             }
         } else {
@@ -199,7 +199,9 @@ trait HasAuthorization
         $sync = [];
 
         foreach ($models as $permission) {
-            $sync[$permission->getKey()] = $this->assignmentPivot(['effect' => 'allow']);
+            $sync[$permission->getKey()] = \Libinkk\Permission\Support\ConfiguredKey::withId(
+                $this->assignmentPivot(['effect' => 'allow'])
+            );
         }
 
         $this->permissions()->sync($sync);
@@ -250,7 +252,7 @@ trait HasAuthorization
 
         foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
             $this->permissions()->syncWithoutDetaching([
-                $permission->getKey() => $pivot,
+                $permission->getKey() => \Libinkk\Permission\Support\ConfiguredKey::withId($pivot),
             ]);
 
             event(new PermissionGranted($this, $permission));
@@ -318,6 +320,33 @@ trait HasAuthorization
         $arguments = $resource === null ? [] : [$resource];
 
         return $this->authorizationEngine()->decide($this, $permission, $arguments);
+    }
+
+    /**
+     * @param  iterable<mixed>  $resources
+     * @return list<array{resource: mixed, allowed: bool, decision: Decision}>
+     */
+    public function authorizeMany(string $permission, iterable $resources): array
+    {
+        return $this->authorizationEngine()->decideMany($this, $permission, $resources);
+    }
+
+    /**
+     * Action map for one resource, e.g. posts → ['view' => true, 'delete' => false].
+     *
+     * @return array<string, bool>
+     */
+    public function permissionsFor(string $resource): array
+    {
+        return $this->authorizationEngine()->permissionsFor($this, $resource);
+    }
+
+    public function preloadAuthorization(?string $guard = null): static
+    {
+        app(\Libinkk\Permission\Cache\PermissionPreloader::class)
+            ->warmUser($this, $guard ?? $this->authorizationGuard());
+
+        return $this;
     }
 
     public function explain(string $permission, mixed $resource = null): array

@@ -64,6 +64,12 @@ return [
             'seconds' => 10,
             'wait' => 5,
         ],
+        'redis' => [
+            'enabled' => false,
+            'store' => env('PERMISSION_CACHE_REDIS_STORE', 'redis'),
+        ],
+        'immediate_invalidation' => true,
+        'metrics' => true,
     ],
 
     'middleware' => [

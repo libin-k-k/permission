@@ -4,6 +4,7 @@ namespace Libinkk\Permission\Conditions;
 
 use Closure;
 use Illuminate\Support\Facades\DB;
+use Libinkk\Permission\Contracts\PermissionCache;
 use Libinkk\Permission\Exceptions\ConditionEvaluationException;
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Support\Tables;
@@ -13,6 +14,7 @@ class ConditionResolver
 {
     public function __construct(
         protected ConditionRegistry $registry,
+        protected PermissionCache $cache,
     ) {
     }
 
@@ -92,6 +94,19 @@ class ConditionResolver
      * @return list<array<string, mixed>>
      */
     protected function databaseConditions(string $permission): array
+    {
+        return $this->cache->remember(
+            "permission:{$permission}:db-conditions",
+            'permissions',
+            fn () => $this->loadDatabaseConditions($permission),
+            persistent: false
+        );
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function loadDatabaseConditions(string $permission): array
     {
         $model = Permission::query()
             ->where(fn ($query) => $query->where('name', $permission)->orWhere('slug', $permission))

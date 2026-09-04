@@ -223,6 +223,16 @@ class PermissionResolver
             return false;
         }
 
+        return (bool) $this->cache->remember(
+            'user:'.$this->cache->userKey($user).':expiring',
+            'user_permissions',
+            fn () => $this->queryExpiringAssignments($user),
+            persistent: false
+        );
+    }
+
+    protected function queryExpiringAssignments(object $user): bool
+    {
         $type = $user->getMorphClass();
         $id = $user->getKey();
         $now = now();

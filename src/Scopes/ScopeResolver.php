@@ -171,22 +171,26 @@ class ScopeResolver
             return;
         }
 
-        DB::table(Tables::get('user_scopes', 'user_scopes'))->insertOrIgnore([
-            'user_type' => $userType,
-            'user_id' => $userId,
-            'scope_id' => $scope->getKey(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        if ($target instanceof Tenant) {
-            DB::table(Tables::get('tenant_users', 'tenant_users'))->insertOrIgnore([
-                'tenant_id' => $target->getKey(),
+        DB::table(Tables::get('user_scopes', 'user_scopes'))->insertOrIgnore(
+            \Libinkk\Permission\Support\ConfiguredKey::withId([
                 'user_type' => $userType,
                 'user_id' => $userId,
+                'scope_id' => $scope->getKey(),
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);
+            ])
+        );
+
+        if ($target instanceof Tenant) {
+            DB::table(Tables::get('tenant_users', 'tenant_users'))->insertOrIgnore(
+                \Libinkk\Permission\Support\ConfiguredKey::withId([
+                    'tenant_id' => $target->getKey(),
+                    'user_type' => $userType,
+                    'user_id' => $userId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ])
+            );
         }
     }
 

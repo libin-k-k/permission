@@ -5,6 +5,7 @@ namespace Libinkk\Permission\Support;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Libinkk\Permission\Cache\CacheMetrics;
 use Libinkk\Permission\Debug\UnusedPermissionFinder;
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Roles\Role;
@@ -44,6 +45,8 @@ class PermissionDoctor
             $this->tableCheck(Tables::permissionVersions()),
             $this->tableCheck(Tables::authorizationAudits()),
             $this->cacheCheck(),
+            $this->redisLayerCheck(),
+            $this->decisionCacheCheck(),
             $this->indexHint(),
             $this->expiredDelegationsCheck(),
         ];
@@ -57,6 +60,7 @@ class PermissionDoctor
         }
 
         $unused = $this->unused->find($guard);
+        $metrics = app(CacheMetrics::class)->snapshot();
 
         if ($unused['total'] > 0) {
             $checks[] = $this->warn("{$unused['total']} unused permissions (run permission:unused)");
@@ -74,6 +78,7 @@ class PermissionDoctor
                 'roles' => $roleCount,
                 'unused_permissions' => $unused['total'],
                 'unused' => $unused,
+                'cache' => $metrics,
                 'validation' => $validation,
             ],
         ];
@@ -109,6 +114,43 @@ class PermissionDoctor
         } catch (\Throwable $e) {
             return $this->fail('Permission cache unhealthy: '.$e->getMessage());
         }
+    }
+
+    /**
+     * @return array{status: string, label: string, detail?: string}
+     */
+    protected function redisLayerCheck(): array
+    {
+        if (! config('permission.cache.redis.enabled', false)) {
+            return $this->ok('Redis L3 cache opt-in is off (L2 store only)');
+        }
+
+        $store = (string) config('permission.cache.redis.store', 'redis');
+
+        try {
+            Cache::store($store)->put('libinkk:permission:doctor:l3', true, 5);
+            Cache::store($store)->forget('libinkk:permission:doctor:l3');
+
+            return $this->ok("Redis L3 cache healthy (store: {$store})");
+        } catch (\Throwable $e) {
+            return $this->fail('Redis L3 cache unhealthy: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * @return array{status: string, label: string}
+     */
+    protected function decisionCacheCheck(): array
+    {
+        if (! config('permission.cache.decision_cache.enabled', true)) {
+            return $this->warn('Decision cache is disabled');
+        }
+
+        $metrics = app(CacheMetrics::class)->snapshot();
+
+        return $this->ok(
+            'Decision cache enabled (hit rate '.number_format($metrics['hit_rate'] * 100, 1).'%)'
+        );
     }
 
     /**

@@ -17,6 +17,8 @@ final class AuthorizationContext
 
     protected static mixed $activeScope = null;
 
+    protected static mixed $impersonator = null;
+
     public function __construct(
         public object $user,
         public string $permission,
@@ -80,10 +82,29 @@ final class AuthorizationContext
         return self::$activeScope ?? self::$activeTenant;
     }
 
+    /**
+     * Host apps set this when impersonating. Does not grant permissions.
+     */
+    public static function impersonating(object $original): void
+    {
+        self::$impersonator = $original;
+    }
+
+    public static function impersonator(): mixed
+    {
+        return self::$impersonator;
+    }
+
+    public static function isImpersonating(): bool
+    {
+        return self::$impersonator !== null;
+    }
+
     public static function flush(): void
     {
         self::$activeTenant = null;
         self::$activeScope = null;
+        self::$impersonator = null;
     }
 
     public function hasResource(): bool
