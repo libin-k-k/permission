@@ -101,8 +101,12 @@ $user->explain('posts.delete');
 
 ## Features
 
-### Available now (v0.3)
+### Available now (v0.4)
 
+- **Multi-tenancy** — tenant-scoped roles, isolation, optional package `tenants` table
+- **Hierarchical scopes** — organization → workspace → project via `scopes.parent_id`
+- **Authorization context** — `AuthorizationContext::tenant()` / `switch()` / `scope()`
+- **Global vs tenant roles** — global roles cross tenants only when explicitly allowed
 - **RBAC** — roles, role permissions, user ↔ role assignment
 - **Direct permissions** — grant/revoke on the user
 - **Role hierarchy** — `Role::inherit()`, cycle prevention, inherited permissions
@@ -132,7 +136,7 @@ $user->explain('posts.delete');
 | **v0.1** | Roles, permissions, Gate, middleware, Blade, basic cache ✅ |
 | **v0.2** | Resources, groups, wildcards, Artisan, discovery, validate, doctor, user export ✅ |
 | **v0.3** | Conditions, ABAC, ownership, role hierarchy, explicit deny, explanation ✅ |
-| **v0.4** | Tenants, hierarchical scopes, authorization context |
+| **v0.4** | Tenants, hierarchical scopes, authorization context ✅ |
 | **v0.5** | Temporary access, delegation, audit logs, versioning |
 | **v0.6** | Vue / React adapters, authorization API payloads |
 | **v0.7** | Optional Filament adapter (`libinkk/permission-filament`) |
@@ -238,6 +242,36 @@ Permission::define('posts.update.own')
 $user->can('posts.update.own', $post);
 $user->explain('invoice.approve', $invoice); // includes condition results
 ```
+
+### Multi-tenancy & scopes
+
+Enable in config: `permission.teams.enabled = true`.
+
+The package does **not** own your tenant models. Bind them as scopes (or use the optional `tenants` table).
+
+```php
+use Libinkk\Permission\Authorization\AuthorizationContext;
+use Libinkk\Permission\Scopes\Scope;
+
+$orgA = Organization::find(1);
+$orgB = Organization::find(2);
+
+$user->assignRole('editor', $orgA);  // tenant A
+$user->assignRole('viewer', $orgB);  // tenant B
+
+AuthorizationContext::tenant($orgA);
+$user->can('posts.create');          // uses editor in A
+
+AuthorizationContext::switch($orgB);
+$user->can('posts.create');          // viewer in B — isolated
+
+// Nested: org admin applies to workspace when inheritance is on
+$orgScope = Scope::for($organization, 'organization');
+$wsScope = Scope::for($workspace, 'workspace', $orgScope);
+AuthorizationContext::scope($workspace);
+```
+
+Global roles (`assignRole('super-admin')` with no tenant) apply across tenants only when `permission.teams.global_roles.cross_tenant` is true.
 
 ---
 
@@ -511,6 +545,9 @@ Core tables created by the package migration:
 | `role_inheritances` | Parent role inherits child role permissions |
 | `permission_conditions` | Named/typed ABAC conditions per permission |
 | `permission_condition_values` | Structured values for conditions |
+| `scopes` | Hierarchical authorization boundaries |
+| `role_scopes` / `permission_scopes` / `user_scopes` | Scope membership |
+| `tenants` / `tenant_users` | Optional package-owned tenants (off by default) |
 
 Soft deletes apply to roles and permissions only — never use soft deletes for audit history (when audit lands).
 
@@ -589,6 +626,7 @@ src/
 ├── Attributes/      PHP #[Permission] attribute
 ├── Authorization/   Engine, Context, Decision, Precedence, UserAccessExporter
 ├── Roles/           Role, RoleManager, RoleHierarchy
+├── Scopes/          Scope, ScopeResolver, ScopeHierarchy, Tenant
 ├── Permissions/     Permission, PermissionDefinition, Manager, Registry, Resolver
 ├── Conditions/      Condition, ConditionRegistry, ConditionResolver, OwnershipChecker
 ├── Discovery/       AttributeScanner, PermissionDiscovery

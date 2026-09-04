@@ -68,6 +68,7 @@ class UserAccessExporter
                 'type' => method_exists($user, 'getMorphClass') ? $user->getMorphClass() : $user::class,
             ],
             'guard' => $guard,
+            'scope' => app(\Libinkk\Permission\Scopes\ScopeResolver::class)->label(),
             'exported_at' => now()->toIso8601String(),
             'roles' => $roleDetails,
             'direct_permissions' => $direct,

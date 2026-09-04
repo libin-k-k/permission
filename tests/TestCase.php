@@ -19,11 +19,13 @@ abstract class TestCase extends Orchestra
         parent::setUp();
 
         PermissionFake::reset();
+        \Libinkk\Permission\Authorization\AuthorizationContext::flush();
     }
 
     protected function tearDown(): void
     {
         PermissionFake::reset();
+        \Libinkk\Permission\Authorization\AuthorizationContext::flush();
 
         parent::tearDown();
     }
@@ -63,6 +65,19 @@ abstract class TestCase extends Orchestra
             $table->string('password')->nullable();
             $table->string('guard_name')->nullable();
             $table->unsignedInteger('approval_limit')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('organizations', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->timestamps();
+        });
+
+        Schema::create('workspaces', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('organization_id')->nullable();
+            $table->string('name');
             $table->timestamps();
         });
 

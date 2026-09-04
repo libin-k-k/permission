@@ -165,6 +165,12 @@ class PermissionCache implements PermissionCacheContract
         $this->bump('generation');
     }
 
+    public function forgetScope(string|int $scopeId): void
+    {
+        $this->forget("scope:{$scopeId}:hierarchy");
+        $this->bump('generation');
+    }
+
     public function generations(object $user): string
     {
         $global = (int) ($this->get('generation') ?? 0);

@@ -7,9 +7,10 @@ interface RoleRepository
     public function findByNameOrSlug(string $name, string $guard): ?array;
 
     /**
+     * @param  list<array{scope_type: string, scope_id: string}>  $scopePivots
      * @return list<array<string, mixed>>
      */
-    public function assignedRoles(object $user, string $guard): array;
+    public function assignedRoles(object $user, string $guard, array $scopePivots = []): array;
 
     /**
      * @return list<string>

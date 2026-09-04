@@ -14,12 +14,13 @@ interface PermissionRepository
     /**
      * @return list<string>
      */
-    public function directPermissionsFor(object $user, string $guard): array;
+    public function directPermissionsFor(object $user, string $guard, array $scopePivots = []): array;
 
     /**
+     * @param  list<array{scope_type: string, scope_id: string}>  $scopePivots
      * @return list<array{name: string, effect: string}>
      */
-    public function directPermissionEntriesFor(object $user, string $guard): array;
+    public function directPermissionEntriesFor(object $user, string $guard, array $scopePivots = []): array;
 
     public function findOrCreate(string $name, string $guard): array;
 }

@@ -36,6 +36,8 @@ class PermissionDoctor
             $this->tableCheck(Tables::rolePermissions()),
             $this->tableCheck(Tables::userRoles()),
             $this->tableCheck(Tables::userPermissions()),
+            $this->tableCheck(Tables::get('scopes', 'scopes')),
+            $this->tableCheck(Tables::get('user_scopes', 'user_scopes')),
             $this->cacheCheck(),
             $this->indexHint(),
         ];

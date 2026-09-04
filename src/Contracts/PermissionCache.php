@@ -20,6 +20,8 @@ interface PermissionCache
 
     public function forgetPermission(string $name): void;
 
+    public function forgetScope(string|int $scopeId): void;
+
     public function forgetRegistry(?string $guard = null): void;
 
     public function flushRequestCache(): void;

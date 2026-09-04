@@ -7,6 +7,7 @@ use Libinkk\Permission\Contracts\PermissionCache;
 use Libinkk\Permission\Contracts\PermissionRepository;
 use Libinkk\Permission\Contracts\RoleRepository;
 use Libinkk\Permission\Roles\RoleHierarchy;
+use Libinkk\Permission\Scopes\ScopeResolver;
 use Libinkk\Permission\Support\WildcardMatcher;
 
 class PermissionResolver
@@ -16,6 +17,7 @@ class PermissionResolver
         protected RoleRepository $roles,
         protected PermissionCache $cache,
         protected RoleHierarchy $hierarchy,
+        protected ScopeResolver $scopes,
     ) {
     }
 
@@ -26,14 +28,16 @@ class PermissionResolver
     {
         $userKey = $this->cache->userKey($user);
         $generation = $this->cache->generations($user);
+        $scopeSalt = $this->scopes->cacheSalt();
+        $scopePivots = $this->scopes->teamsEnabled() ? $this->scopes->matchingPivots() : [];
 
         return $this->cache->remember(
-            "user:{$userKey}:permissions:{$generation}",
+            "user:{$userKey}:tenant:{$scopeSalt}:permissions:{$generation}",
             'user_permissions',
-            function () use ($user, $guard, $userKey, $generation) {
+            function () use ($user, $guard, $userKey, $generation, $scopePivots) {
                 $map = [];
 
-                foreach ($this->rolesFor($user, $guard, $userKey, $generation) as $role) {
+                foreach ($this->rolesFor($user, $guard, $userKey, $generation, $scopePivots) as $role) {
                     foreach ($this->permissionEntriesForRole($role) as $entry) {
                         $this->putMap($map, $entry['name'], [
                             'effect' => $entry['effect'],
@@ -55,7 +59,7 @@ class PermissionResolver
                     }
                 }
 
-                foreach ($this->permissions->directPermissionEntriesFor($user, $guard) as $entry) {
+                foreach ($this->permissions->directPermissionEntriesFor($user, $guard, $scopePivots) as $entry) {
                     $this->putMap($map, $entry['name'], [
                         'effect' => $entry['effect'],
                         'source' => 'direct',
@@ -70,17 +74,20 @@ class PermissionResolver
     }
 
     /**
+     * @param  list<array{scope_type: string, scope_id: string}>|null  $scopePivots
      * @return list<array<string, mixed>>
      */
-    public function rolesFor(object $user, string $guard, ?string $userKey = null, ?string $generation = null): array
+    public function rolesFor(object $user, string $guard, ?string $userKey = null, ?string $generation = null, ?array $scopePivots = null): array
     {
         $userKey ??= $this->cache->userKey($user);
         $generation ??= $this->cache->generations($user);
+        $scopePivots ??= $this->scopes->teamsEnabled() ? $this->scopes->matchingPivots() : [];
+        $scopeSalt = $this->scopes->cacheSalt();
 
         return $this->cache->remember(
-            "user:{$userKey}:roles:{$generation}",
+            "user:{$userKey}:tenant:{$scopeSalt}:roles:{$generation}",
             'user_roles',
-            fn () => $this->roles->assignedRoles($user, $guard)
+            fn () => $this->roles->assignedRoles($user, $guard, $scopePivots)
         );
     }
 
@@ -183,7 +190,7 @@ class PermissionResolver
 
     public function permissionMapCacheSalt(object $user, string $guard): string
     {
-        return $this->cache->generations($user).':'.$guard;
+        return $this->cache->generations($user).':'.$guard.':'.$this->scopes->cacheSalt();
     }
 
     /**

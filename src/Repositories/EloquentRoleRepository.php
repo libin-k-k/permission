@@ -22,13 +22,13 @@ class EloquentRoleRepository implements RoleRepositoryContract
         return $role ? $this->toArray($role) : null;
     }
 
-    public function assignedRoles(object $user, string $guard): array
+    public function assignedRoles(object $user, string $guard, array $scopePivots = []): array
     {
         $now = now();
         $roles = Tables::roles();
         $userRoles = Tables::userRoles();
 
-        return DB::table($userRoles)
+        $query = DB::table($userRoles)
             ->join($roles, "{$roles}.id", '=', "{$userRoles}.role_id")
             ->where("{$userRoles}.user_type", $user->getMorphClass())
             ->where("{$userRoles}.user_id", $user->getKey())
@@ -42,13 +42,19 @@ class EloquentRoleRepository implements RoleRepositoryContract
             ->where(function ($query) use ($userRoles, $now) {
                 $query->whereNull("{$userRoles}.expires_at")
                     ->orWhere("{$userRoles}.expires_at", '>', $now);
-            })
+            });
+
+        $this->constrainScope($query, $userRoles, $scopePivots);
+
+        return $query
             ->orderByDesc("{$roles}.priority")
             ->get([
                 "{$roles}.id",
                 "{$roles}.name",
                 "{$roles}.slug",
                 "{$roles}.priority",
+                "{$userRoles}.scope_type",
+                "{$userRoles}.scope_id",
             ])
             ->map(fn ($role) => (array) $role)
             ->all();
@@ -106,6 +112,27 @@ class EloquentRoleRepository implements RoleRepositoryContract
         ]);
 
         return $this->toArray($role);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  list<array{scope_type: string, scope_id: string}>  $scopePivots
+     */
+    protected function constrainScope($query, string $table, array $scopePivots): void
+    {
+        if ($scopePivots === []) {
+            return;
+        }
+
+        $query->where(function ($outer) use ($table, $scopePivots) {
+            foreach ($scopePivots as $index => $pivot) {
+                $method = $index === 0 ? 'where' : 'orWhere';
+                $outer->{$method}(function ($inner) use ($table, $pivot) {
+                    $inner->where("{$table}.scope_type", $pivot['scope_type'])
+                        ->where("{$table}.scope_id", $pivot['scope_id']);
+                });
+            }
+        });
     }
 
     /**

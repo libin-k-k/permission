@@ -51,4 +51,34 @@ final class Tables
     {
         return self::get('permission_condition_values', 'permission_condition_values');
     }
+
+    public static function scopes(): string
+    {
+        return self::get('scopes', 'scopes');
+    }
+
+    public static function roleScopes(): string
+    {
+        return self::get('role_scopes', 'role_scopes');
+    }
+
+    public static function permissionScopes(): string
+    {
+        return self::get('permission_scopes', 'permission_scopes');
+    }
+
+    public static function userScopes(): string
+    {
+        return self::get('user_scopes', 'user_scopes');
+    }
+
+    public static function tenants(): string
+    {
+        return self::get('tenants', 'tenants');
+    }
+
+    public static function tenantUsers(): string
+    {
+        return self::get('tenant_users', 'tenant_users');
+    }
 }

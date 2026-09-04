@@ -6,6 +6,8 @@ use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Libinkk\Permission\Authorization\AuthorizationContext;
 use Libinkk\Permission\Authorization\AuthorizationEngine as Engine;
 use Libinkk\Permission\Authorization\Decision;
 use Libinkk\Permission\Contracts\AuthorizationEngine;
@@ -16,6 +18,7 @@ use Libinkk\Permission\Events\RoleAssigned;
 use Libinkk\Permission\Events\RoleRemoved;
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Roles\Role;
+use Libinkk\Permission\Scopes\ScopeResolver;
 use Libinkk\Permission\Support\Tables;
 
 /**
@@ -47,16 +50,22 @@ trait HasAuthorization
             ->withTimestamps();
     }
 
-    public function assignRole(string|Role|array ...$roles): static
+    public function assignRole(mixed ...$roles): static
     {
+        [$roles, $scope] = $this->extractScopeArgument($roles);
         $guard = $this->authorizationGuard();
+        $pivot = $this->assignmentPivot($this->scopePivot($scope));
 
         foreach ($this->normalizeRoles($roles, $guard) as $role) {
             $this->roles()->syncWithoutDetaching([
-                $role->getKey() => $this->assignmentPivot(),
+                $role->getKey() => $pivot,
             ]);
 
             event(new RoleAssigned($this, $role));
+        }
+
+        if ($scope) {
+            $this->scopeResolver()->grantUser($this, $scope);
         }
 
         $this->authorizationCache()->forgetUser($this);
@@ -64,13 +73,25 @@ trait HasAuthorization
         return $this;
     }
 
-    public function removeRole(string|Role|array ...$roles): static
+    public function removeRole(mixed ...$roles): static
     {
+        [$roles, $scope] = $this->extractScopeArgument($roles);
         $guard = $this->authorizationGuard();
         $models = $this->normalizeRoles($roles, $guard, create: false);
 
         if ($models !== []) {
-            $this->roles()->detach(collect($models)->map->getKey()->all());
+            $ids = collect($models)->map->getKey()->all();
+            $query = DB::table(Tables::userRoles())
+                ->where('user_type', $this->getMorphClass())
+                ->where('user_id', $this->getKey())
+                ->whereIn('role_id', $ids);
+
+            if ($scope !== null) {
+                $pivot = $this->scopePivot($scope);
+                $query->where('scope_type', $pivot['scope_type'])->where('scope_id', $pivot['scope_id']);
+            }
+
+            $query->delete();
 
             foreach ($models as $role) {
                 event(new RoleRemoved($this, $role));
@@ -82,17 +103,36 @@ trait HasAuthorization
         return $this;
     }
 
-    public function syncRoles(string|Role|array ...$roles): static
+    public function syncRoles(mixed ...$roles): static
     {
+        [$roles, $scope] = $this->extractScopeArgument($roles);
         $guard = $this->authorizationGuard();
         $models = $this->normalizeRoles($roles, $guard);
         $sync = [];
+        $pivot = $this->assignmentPivot($this->scopePivot($scope));
 
         foreach ($models as $role) {
-            $sync[$role->getKey()] = $this->assignmentPivot();
+            $sync[$role->getKey()] = $pivot;
         }
 
-        $this->roles()->sync($sync);
+        if ($scope !== null) {
+            $scopePivot = $this->scopePivot($scope);
+            DB::table(Tables::userRoles())
+                ->where('user_type', $this->getMorphClass())
+                ->where('user_id', $this->getKey())
+                ->where('scope_type', $scopePivot['scope_type'])
+                ->where('scope_id', $scopePivot['scope_id'])
+                ->delete();
+
+            foreach ($models as $role) {
+                $this->roles()->syncWithoutDetaching([
+                    $role->getKey() => $pivot,
+                ]);
+            }
+        } else {
+            $this->roles()->sync($sync);
+        }
+
         $this->authorizationCache()->forgetUser($this);
 
         return $this;
@@ -119,12 +159,12 @@ trait HasAuthorization
         return $names->every(fn (string $name) => $assigned->contains($name));
     }
 
-    public function givePermissionTo(string|Permission|array ...$permissions): static
+    public function givePermissionTo(mixed ...$permissions): static
     {
         return $this->assignPermissionEffect($permissions, 'allow');
     }
 
-    public function denyPermissionTo(string|Permission|array ...$permissions): static
+    public function denyPermissionTo(mixed ...$permissions): static
     {
         return $this->assignPermissionEffect($permissions, 'deny');
     }
@@ -168,14 +208,20 @@ trait HasAuthorization
      */
     protected function assignPermissionEffect(array $permissions, string $effect): static
     {
+        [$permissions, $scope] = $this->extractScopeArgument($permissions);
         $guard = $this->authorizationGuard();
+        $pivot = $this->assignmentPivot(array_merge($this->scopePivot($scope), ['effect' => $effect]));
 
         foreach ($this->normalizePermissions($permissions, $guard) as $permission) {
             $this->permissions()->syncWithoutDetaching([
-                $permission->getKey() => $this->assignmentPivot(['effect' => $effect]),
+                $permission->getKey() => $pivot,
             ]);
 
             event(new PermissionGranted($this, $permission));
+        }
+
+        if ($scope) {
+            $this->scopeResolver()->grantUser($this, $scope);
         }
 
         $this->authorizationCache()->forgetUser($this);
@@ -369,6 +415,49 @@ trait HasAuthorization
             'starts_at' => now(),
             'expires_at' => null,
         ], $extra);
+    }
+
+    /**
+     * @param  array<int, mixed>  $items
+     * @return array{0: array<int, mixed>, 1: mixed}
+     */
+    protected function extractScopeArgument(array $items): array
+    {
+        if ($items === []) {
+            return [[], AuthorizationContext::currentTarget()];
+        }
+
+        $last = $items[array_key_last($items)];
+
+        if ($this->isScopeArgument($last)) {
+            array_pop($items);
+
+            return [array_values($items), $last];
+        }
+
+        return [$items, AuthorizationContext::currentTarget()];
+    }
+
+    protected function isScopeArgument(mixed $value): bool
+    {
+        if ($value instanceof Role || $value instanceof Permission || is_string($value) || is_array($value)) {
+            return false;
+        }
+
+        return is_object($value);
+    }
+
+    /**
+     * @return array{scope_type: string, scope_id: string}
+     */
+    protected function scopePivot(mixed $scope): array
+    {
+        return $this->scopeResolver()->pivotFor($scope);
+    }
+
+    protected function scopeResolver(): ScopeResolver
+    {
+        return app(ScopeResolver::class);
     }
 
     protected function authorizationCache(): PermissionCache

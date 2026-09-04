@@ -7,6 +7,7 @@ use Libinkk\Permission\Cache\PermissionFake;
 use Libinkk\Permission\Conditions\ConditionResolver;
 use Libinkk\Permission\Contracts\AuthorizationEngine as AuthorizationEngineContract;
 use Libinkk\Permission\Permissions\PermissionResolver;
+use Libinkk\Permission\Scopes\ScopeResolver;
 use Throwable;
 
 class AuthorizationEngine implements AuthorizationEngineContract
@@ -17,6 +18,7 @@ class AuthorizationEngine implements AuthorizationEngineContract
         protected PermissionResolver $resolver,
         protected DecisionCache $decisions,
         protected ConditionResolver $conditions,
+        protected ScopeResolver $scopes,
     ) {
     }
 
@@ -80,11 +82,48 @@ class AuthorizationEngine implements AuthorizationEngineContract
         $resource = $arguments[0] ?? null;
         $guard = $this->guardFor($user);
         $context = new AuthorizationContext($user, $permission, $guard, $resource, $arguments);
+        $scopeLabel = $this->scopes->label();
 
         if (PermissionFake::isActive() && PermissionFake::instance()->has($permission)) {
             return PermissionFake::instance()->allowed($permission)
                 ? Decision::allow($permission, $user, resource: $resource, source: 'fake')
                 : Decision::deny($permission, $user, resource: $resource, reason: DecisionReason::EXPLICIT_DENY, source: 'fake');
+        }
+
+        if ($this->scopes->teamsEnabled()) {
+            $target = AuthorizationContext::currentTarget();
+
+            if (config('permission.teams.require_context') && $target === null) {
+                return Decision::deny(
+                    permission: $permission,
+                    user: $user,
+                    resource: $resource,
+                    reason: DecisionReason::CONTEXT_MISSING,
+                    source: 'engine',
+                    checks: ['context' => false],
+                );
+            }
+
+            if ($target !== null && config('permission.teams.require_membership') && ! $this->scopes->userCanAccess($user, $target)) {
+                $reason = $this->scopes->isNestedScope($target)
+                    ? DecisionReason::SCOPE_MISMATCH
+                    : DecisionReason::TENANT_MISMATCH;
+
+                $decision = Decision::deny(
+                    permission: $permission,
+                    user: $user,
+                    resource: $resource,
+                    reason: $reason,
+                    source: 'engine',
+                    checks: [
+                        'tenant' => $reason !== DecisionReason::TENANT_MISMATCH,
+                        'scope' => false,
+                    ],
+                );
+                $decision->scope = $scopeLabel;
+
+                return $decision;
+            }
         }
 
         $hasDynamicConditions = $this->conditions->hasConditions($permission) || $context->hasResource();
@@ -112,13 +151,14 @@ class AuthorizationEngine implements AuthorizationEngineContract
                 permission: $permission,
                 user: $user,
                 resource: $resource,
-                reason: DecisionReason::PERMISSION_MISSING,
+                reason: $this->missingReason($user),
                 source: 'engine',
                 checks: [
                     'permission' => false,
                     'role' => $this->resolver->rolesFor($user, $guard) !== [],
                     'wildcard' => false,
                     'conditions' => null,
+                    'tenant' => AuthorizationContext::currentTarget() !== null,
                 ],
             );
         } elseif (Precedence::isDeny($entry['layer']) || ($entry['effect'] ?? 'allow') === 'deny') {
@@ -194,6 +234,8 @@ class AuthorizationEngine implements AuthorizationEngineContract
             }
         }
 
+        $decision->scope = $scopeLabel;
+
         if (! $hasDynamicConditions) {
             $this->decisions->put($cacheKey, $decision, $context->hasResource());
         }
@@ -218,5 +260,26 @@ class AuthorizationEngine implements AuthorizationEngineContract
         }
 
         return (string) config('permission.default_guard', 'web');
+    }
+
+    protected function missingReason(object $user): string
+    {
+        if (! $this->scopes->teamsEnabled()) {
+            return DecisionReason::PERMISSION_MISSING;
+        }
+
+        $target = AuthorizationContext::currentTarget();
+
+        if ($target === null) {
+            return DecisionReason::PERMISSION_MISSING;
+        }
+
+        if ($this->scopes->userHasOtherTenantAssignments($user, $target)) {
+            return $this->scopes->isNestedScope($target)
+                ? DecisionReason::SCOPE_MISMATCH
+                : DecisionReason::TENANT_MISMATCH;
+        }
+
+        return DecisionReason::PERMISSION_MISSING;
     }
 }

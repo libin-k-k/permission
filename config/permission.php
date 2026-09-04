@@ -10,6 +10,8 @@ return [
         'user' => env('AUTH_MODEL', Illuminate\Foundation\Auth\User::class),
         'role' => Libinkk\Permission\Roles\Role::class,
         'permission' => Libinkk\Permission\Permissions\Permission::class,
+        'scope' => Libinkk\Permission\Scopes\Scope::class,
+        'tenant' => Libinkk\Permission\Scopes\Tenant::class,
     ],
 
     'table_names' => [
@@ -21,6 +23,12 @@ return [
         'role_inheritances' => 'role_inheritances',
         'permission_conditions' => 'permission_conditions',
         'permission_condition_values' => 'permission_condition_values',
+        'scopes' => 'scopes',
+        'role_scopes' => 'role_scopes',
+        'permission_scopes' => 'permission_scopes',
+        'user_scopes' => 'user_scopes',
+        'tenants' => 'tenants',
+        'tenant_users' => 'tenant_users',
     ],
 
     'database' => [
@@ -61,6 +69,16 @@ return [
 
     'teams' => [
         'enabled' => false,
+        'require_context' => false,
+        'require_membership' => false,
+        'own_tenants' => false,
+        'global_roles' => [
+            'cross_tenant' => false,
+        ],
+    ],
+
+    'scopes' => [
+        'inherit' => true,
     ],
 
     'hierarchy' => [

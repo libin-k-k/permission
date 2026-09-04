@@ -39,6 +39,8 @@ use Libinkk\Permission\Repositories\EloquentPermissionRepository;
 use Libinkk\Permission\Repositories\EloquentRoleRepository;
 use Libinkk\Permission\Roles\RoleHierarchy;
 use Libinkk\Permission\Roles\RoleManager;
+use Libinkk\Permission\Scopes\ScopeHierarchy;
+use Libinkk\Permission\Scopes\ScopeResolver;
 use Libinkk\Permission\Support\PermissionDoctor;
 use Libinkk\Permission\Support\PermissionValidator;
 
@@ -56,6 +58,8 @@ class PermissionServiceProvider extends ServiceProvider
         $this->app->singleton(ConditionRegistry::class);
         $this->app->singleton(ConditionResolver::class);
         $this->app->singleton(RoleHierarchy::class);
+        $this->app->singleton(ScopeHierarchy::class);
+        $this->app->singleton(ScopeResolver::class);
 
         $this->app->singleton(PermissionResolver::class);
         $this->app->singleton(PermissionRegistry::class);
@@ -183,6 +187,7 @@ class PermissionServiceProvider extends ServiceProvider
                     $this->app->make(ConditionRegistry::class)->flush();
                 }
 
+                \Libinkk\Permission\Authorization\AuthorizationContext::flush();
                 PermissionFake::reset();
             });
         }

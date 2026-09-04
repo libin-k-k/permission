@@ -32,9 +32,9 @@ class EloquentPermissionRepository implements PermissionRepositoryContract
             ->all();
     }
 
-    public function directPermissionsFor(object $user, string $guard): array
+    public function directPermissionsFor(object $user, string $guard, array $scopePivots = []): array
     {
-        return collect($this->directPermissionEntriesFor($user, $guard))
+        return collect($this->directPermissionEntriesFor($user, $guard, $scopePivots))
             ->where('effect', 'allow')
             ->pluck('name')
             ->unique()
@@ -43,15 +43,16 @@ class EloquentPermissionRepository implements PermissionRepositoryContract
     }
 
     /**
+     * @param  list<array{scope_type: string, scope_id: string}>  $scopePivots
      * @return list<array{name: string, effect: string}>
      */
-    public function directPermissionEntriesFor(object $user, string $guard): array
+    public function directPermissionEntriesFor(object $user, string $guard, array $scopePivots = []): array
     {
         $now = now();
         $permissions = Tables::permissions();
         $userPermissions = Tables::userPermissions();
 
-        return DB::table($userPermissions)
+        $query = DB::table($userPermissions)
             ->join($permissions, "{$permissions}.id", '=', "{$userPermissions}.permission_id")
             ->where("{$userPermissions}.user_type", $user->getMorphClass())
             ->where("{$userPermissions}.user_id", $user->getKey())
@@ -65,7 +66,11 @@ class EloquentPermissionRepository implements PermissionRepositoryContract
             ->where(function ($query) use ($userPermissions, $now) {
                 $query->whereNull("{$userPermissions}.expires_at")
                     ->orWhere("{$userPermissions}.expires_at", '>', $now);
-            })
+            });
+
+        $this->constrainScope($query, $userPermissions, $scopePivots);
+
+        return $query
             ->get([
                 "{$permissions}.name",
                 "{$userPermissions}.effect",
@@ -99,6 +104,27 @@ class EloquentPermissionRepository implements PermissionRepositoryContract
         ]);
 
         return $this->toArray($permission);
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  list<array{scope_type: string, scope_id: string}>  $scopePivots
+     */
+    protected function constrainScope($query, string $table, array $scopePivots): void
+    {
+        if ($scopePivots === []) {
+            return;
+        }
+
+        $query->where(function ($outer) use ($table, $scopePivots) {
+            foreach ($scopePivots as $index => $pivot) {
+                $method = $index === 0 ? 'where' : 'orWhere';
+                $outer->{$method}(function ($inner) use ($table, $pivot) {
+                    $inner->where("{$table}.scope_type", $pivot['scope_type'])
+                        ->where("{$table}.scope_id", $pivot['scope_id']);
+                });
+            }
+        });
     }
 
     /**
