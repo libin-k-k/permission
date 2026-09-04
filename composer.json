@@ -1,6 +1,6 @@
 {
     "name": "libinkk/permission",
-    "description": "Production-grade Laravel authorization engine with RBAC, ABAC, multi-tenancy, temporary access, delegation, audit logs, and explainable decisions.",
+    "description": "Production-grade Laravel authorization engine with RBAC, ABAC, multi-tenancy, temporary access, delegation, audit logs, and Vue/React helpers.",
     "keywords": [
         "libinkk",
         "laravel",
@@ -13,7 +13,9 @@
         "permissions",
         "multi-tenancy",
         "delegation",
-        "audit"
+        "audit",
+        "vue",
+        "react"
     ],
     "type": "library",
     "license": "MIT",
@@ -48,7 +50,10 @@
     "autoload": {
         "psr-4": {
             "Libinkk\\Permission\\": "src/"
-        }
+        },
+        "files": [
+            "src/helpers.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {

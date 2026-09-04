@@ -32,6 +32,8 @@ use Libinkk\Permission\Contracts\PermissionCache as PermissionCacheContract;
 use Libinkk\Permission\Contracts\PermissionRepository as PermissionRepositoryContract;
 use Libinkk\Permission\Contracts\RoleRepository as RoleRepositoryContract;
 use Libinkk\Permission\Delegation\DelegationManager;
+use Libinkk\Permission\Frontend\FrontendPayload;
+use Libinkk\Permission\Frontend\PermissionMatrix;
 use Libinkk\Permission\Events\AuthorizationAllowed;
 use Libinkk\Permission\Events\AuthorizationDenied;
 use Libinkk\Permission\Events\DelegationCreated;
@@ -93,6 +95,9 @@ class PermissionServiceProvider extends ServiceProvider
         $this->app->singleton(AuditLogger::class);
         $this->app->singleton(AuditLoggerContract::class, fn ($app) => $app->make(AuditLogger::class));
 
+        $this->app->singleton(FrontendPayload::class);
+        $this->app->singleton(PermissionMatrix::class);
+
         $this->app->singleton(AuthorizationEngineContract::class, AuthorizationEngine::class);
     }
 
@@ -102,8 +107,13 @@ class PermissionServiceProvider extends ServiceProvider
             __DIR__.'/../../config/permission.php' => $this->app->configPath('permission.php'),
         ], 'libinkk-permission-config');
 
+        $this->publishes([
+            __DIR__.'/../../resources/js' => $this->app->resourcePath('js/vendor/libinkk-permission'),
+        ], 'libinkk-permission-frontend');
+
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
 
+        $this->registerFrontendRoutes();
         $this->registerBuiltinConditions();
         $this->registerCommands();
         $this->registerGate();
@@ -184,6 +194,24 @@ class PermissionServiceProvider extends ServiceProvider
             $user = Auth::user();
 
             return $user && method_exists($user, 'canAll') && $user->canAll((array) $permissions);
+        });
+
+        Blade::directive('permissionPayload', function () {
+            return '<?php echo \'<script>window.__LIBINKK_PERMISSION__ = \'.json_encode(permission_payload(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).\';</script>\'; ?>';
+        });
+    }
+
+    protected function registerFrontendRoutes(): void
+    {
+        if (! config('permission.frontend.enabled', false) || ! config('permission.frontend.routes', true)) {
+            return;
+        }
+
+        $this->app->make('router')->group([
+            'prefix' => trim((string) config('permission.frontend.prefix', 'api'), '/'),
+            'middleware' => config('permission.frontend.middleware', ['web']),
+        ], function () {
+            $this->loadRoutesFrom(__DIR__.'/../../routes/api.php');
         });
     }
 

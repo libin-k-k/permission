@@ -9,6 +9,7 @@ class InstallCommand extends Command
 {
     protected $signature = 'permission:install
                             {--migrate : Run package migrations}
+                            {--frontend : Publish Vue / React helpers}
                             {--force : Overwrite existing config}';
 
     protected $description = 'Publish libinkk/permission config and optionally migrate';
@@ -21,6 +22,13 @@ class InstallCommand extends Command
             '--tag' => 'libinkk-permission-config',
             '--force' => (bool) $this->option('force'),
         ], $this->output);
+
+        if ($this->option('frontend')) {
+            Artisan::call('vendor:publish', [
+                '--tag' => 'libinkk-permission-frontend',
+                '--force' => (bool) $this->option('force'),
+            ], $this->output);
+        }
 
         if ($this->option('migrate')) {
             Artisan::call('migrate', [], $this->output);

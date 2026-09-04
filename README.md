@@ -101,7 +101,7 @@ $user->explain('posts.delete');
 
 ## Features
 
-### Available now (v0.5)
+### Available now (v0.6)
 
 - **Temporary access** — `$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7))`
 - **Scheduled grants** — `startsAt` / `expiresAt` on user permissions and roles
@@ -127,7 +127,9 @@ $user->explain('posts.delete');
 - **User access export** — `$user->exportAccess()` / `permission:export` (includes temporary + delegations)
 - **Laravel Gate** — `Gate::before` integration for managed abilities
 - **Middleware** — `permission:` and `role:` (configurable AND/OR)
-- **Blade** — `@can`, `@role`, `@canall`
+- **Blade** — `@can`, `@role`, `@canany`, `@canall`, `@permissionPayload`
+- **Vue / React** — `$can` / `usePermission()` / `<Can>` (UI-only)
+- **Authorization API** — `GET /api/authorization`, `/api/users/{user}/access`, `/api/permissions/matrix`
 - **Explainable decisions** — `Decision` + condition checks + deny layers
 - **Layered cache** — request-level + store cache, Octane-safe flush
 - **Multi-guard** — `guard_name` on roles/permissions and users
@@ -144,7 +146,7 @@ $user->explain('posts.delete');
 | **v0.3** | Conditions, ABAC, ownership, role hierarchy, explicit deny, explanation ✅ |
 | **v0.4** | Tenants, hierarchical scopes, authorization context ✅ |
 | **v0.5** | Temporary access, delegation, audit logs, versioning ✅ |
-| **v0.6** | Vue / React adapters, authorization API payloads |
+| **v0.6** | Vue / React adapters, authorization API payloads ✅ |
 | **v0.7** | Optional Filament adapter (`libinkk/permission-filament`) |
 | **v0.8+** | Debugger, graph, unused permissions, performance & security hardening |
 | **v1.0** | Stable docs, upgrade guide, compatibility matrix |
@@ -468,6 +470,67 @@ Logic defaults (config):
 
 Frontend checks are **UI-only**. Always enforce on the server.
 
+### Vue
+
+Publish helpers (`php artisan vendor:publish --tag=libinkk-permission-frontend`) or import from the package:
+
+```js
+import { createPermissionPlugin, usePermission } from 'vendor/libinkk-permission/vue';
+
+app.use(createPermissionPlugin(window.__LIBINKK_PERMISSION__));
+```
+
+```vue
+<button v-if="$can('posts.create')">Create Post</button>
+```
+
+```js
+const { can, canAny, canAll, hasRole } = usePermission();
+```
+
+### React
+
+```jsx
+import { PermissionProvider, usePermission, Can, CanAny, CanAll } from 'vendor/libinkk-permission/react';
+
+<PermissionProvider value={window.__LIBINKK_PERMISSION__}>
+    <Can permission="posts.create"><CreatePostButton /></Can>
+    <CanAny permissions={['posts.create', 'posts.update']}><PostActions /></CanAny>
+    <CanAll permissions={['posts.view', 'posts.create']}><AdvancedEditor /></CanAll>
+</PermissionProvider>
+```
+
+```jsx
+const { can, canAny, canAll, hasRole } = usePermission();
+```
+
+### Authorization payload & API
+
+Off by default. Enable `permission.frontend.enabled`.
+
+```php
+permission_payload(); // current user — roles, permissions, denials, scopes, resources
+```
+
+```blade
+@permissionPayload
+{{-- window.__LIBINKK_PERMISSION__ = {...} --}}
+```
+
+Optional HTTP endpoints (authenticated):
+
+```http
+GET /api/authorization
+GET /api/users/{user}/access
+GET /api/permissions/matrix
+```
+
+`/api/users/{user}/access` is self-only unless `frontend.access_user_permission` is set and the viewer can that ability.
+
+Share into Blade / Inertia with `Libinkk\Permission\Frontend\ShareAuthorizationState` when `frontend.share` is true.
+
+These payloads are **not** a security boundary.
+
 ---
 
 ## Discovery & PHP attributes
@@ -500,7 +563,7 @@ Configure extra scan paths in `config/permission.php` → `discovery.paths`.
 
 | Command | Purpose |
 |---------|---------|
-| `permission:install` | Publish config (+ optional migrate) |
+| `permission:install` | Publish config (+ optional migrate / `--frontend`) |
 | `permission:resource` | Create resource permissions |
 | `permission:discover` | Scan `#[Permission]` attributes |
 | `permission:sync` | Persist discovered permissions |
@@ -577,7 +640,7 @@ return [
     'delegation' => ['enabled' => true],
     'versioning' => ['enabled' => true],
     'audit' => ['enabled' => false, 'decisions' => false],
-    'frontend' => ['enabled' => false],
+    'frontend' => ['enabled' => false, 'routes' => true, 'prefix' => 'api'],
     'filament' => ['enabled' => false],
 ];
 ```
@@ -691,6 +754,7 @@ src/
 ├── Conditions/      Condition, ConditionRegistry, ConditionResolver, OwnershipChecker
 ├── Delegation/      Delegation, DelegationManager
 ├── Audit/           AuthorizationAudit, AuditLogger
+├── Frontend/        Payload, matrix, API, Inertia/Blade share
 ├── Discovery/       AttributeScanner, PermissionDiscovery
 ├── Cache/           PermissionCache, DecisionCache, PermissionFake
 ├── Commands/        Artisan DX commands

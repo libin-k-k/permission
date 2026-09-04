@@ -126,6 +126,11 @@ return [
 
     'frontend' => [
         'enabled' => false,
+        'routes' => true,
+        'prefix' => 'api',
+        'middleware' => ['web'],
+        'share' => false,
+        'access_user_permission' => null, // e.g. users.access — required to view another user
     ],
 
     'filament' => [
