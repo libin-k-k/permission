@@ -1,6 +1,6 @@
 # libinkk/permission
 
-**Production-grade Laravel authorization engine** with RBAC, direct permissions, explainable decisions, Gate/middleware/Blade integration, and layered caching.
+**Production-grade Laravel authorization engine** with RBAC, resource permissions, wildcards, explainable decisions, Artisan tooling, Gate/middleware/Blade integration, and layered caching.
 
 > Authorization that explains itself.
 
@@ -45,15 +45,12 @@ This is **not** a thin roles CRUD helper. It is infrastructure for production au
 composer require libinkk/permission
 ```
 
-Publish the config (optional):
+Publish the config (optional) or use the installer:
 
 ```bash
+php artisan permission:install --migrate
+# or
 php artisan vendor:publish --tag=libinkk-permission-config
-```
-
-Run migrations (loaded automatically by the package):
-
-```bash
 php artisan migrate
 ```
 
@@ -78,49 +75,45 @@ The package does **not** own your `users` table. Assignments are polymorphic via
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Roles\Role;
 
-// Create permissions (resource.action naming)
-Permission::findOrCreate('posts.view');
-Permission::findOrCreate('posts.create');
-Permission::findOrCreate('posts.update');
-Permission::findOrCreate('posts.delete');
+// Define a whole resource at once (or Permission::crud('posts'))
+Permission::defineResource('posts', ['view', 'create', 'update', 'delete', 'publish'], [
+    'group' => 'Posts',
+]);
 
-// Create a role and attach permissions
+// Create a role and attach permissions (wildcards supported)
 $role = Role::findOrCreate('editor');
-$role->givePermissionTo('posts.view', 'posts.create', 'posts.update');
+$role->givePermissionTo('posts.*');
 
-// Assign to a user
 $user->assignRole('editor');
-
-// Direct permission (optional)
 $user->givePermissionTo('reports.export');
 
-// Checks (Gate-native)
-$user->can('posts.update');           // true
+$user->can('posts.update');           // true via posts.*
 $user->hasRole('editor');             // true
-$user->hasPermissionTo('posts.view'); // true
 
-// Explain a decision
+// Kill feature: full roles + permissions export
+$export = $user->exportAccess();
+// totals, roles, direct, effective (wildcard-expanded), by_group, by_resource
+
 $user->explain('posts.delete');
-// [
-//   'allowed' => false,
-//   'permission' => 'posts.delete',
-//   'reason' => 'PERMISSION_MISSING',
-//   'source' => 'engine',
-//   ...
-// ]
 ```
 
 ---
 
 ## Features
 
-### Available now
+### Available now (v0.2)
 
 - **RBAC** — roles, role permissions, user ↔ role assignment
 - **Direct permissions** — grant/revoke on the user
+- **Permission resources** — `Permission::defineResource()`, `Permission::crud()`
+- **Permission groups** — `group` metadata + `Permission::inGroup()`
+- **Wildcards** — `posts.*`, `posts.view.*` resolve at decision time
+- **Discovery** — PHP `#[Permission]` attributes + `permission:discover` / `sync`
+- **Artisan DX** — install, resource, discover, sync, validate, doctor, cache, export
+- **User access export** — `$user->exportAccess()` / `permission:export` (roles + effective permissions + totals)
 - **Laravel Gate** — `Gate::before` integration for managed abilities
 - **Middleware** — `permission:` and `role:` (configurable AND/OR)
-- **Blade** — `@can`, `@role`, `@canall` (plus Laravel’s built-in `@can` / `@canany`)
+- **Blade** — `@can`, `@role`, `@canall`
 - **Explainable decisions** — `Decision` + `DecisionReason` constants
 - **Layered cache** — request-level + store cache, Octane-safe flush
 - **Multi-guard** — `guard_name` on roles/permissions and users
@@ -133,7 +126,7 @@ $user->explain('posts.delete');
 | Version | Scope |
 |---------|--------|
 | **v0.1** | Roles, permissions, Gate, middleware, Blade, basic cache ✅ |
-| **v0.2** | Resources, groups, wildcards, Artisan, discovery, validate, doctor |
+| **v0.2** | Resources, groups, wildcards, Artisan, discovery, validate, doctor, user export ✅ |
 | **v0.3** | Conditions (ABAC), ownership, hierarchy, explicit deny polish |
 | **v0.4** | Tenants, hierarchical scopes, authorization context |
 | **v0.5** | Temporary access, delegation, audit logs, versioning |
@@ -161,6 +154,41 @@ reports.export
 ```
 
 Permissions with a `.` are treated as package-managed abilities by the Gate integration.
+
+### Resources & groups
+
+```php
+Permission::defineResource('posts', [
+    'view', 'create', 'update', 'delete', 'publish',
+], ['group' => 'Posts']);
+
+Permission::crud('invoices'); // view/create/update/delete, group "Invoices"
+
+Permission::define('reports.export', [
+    'group' => 'Reports',
+    'description' => 'Export reports',
+]);
+
+Permission::inGroup('Posts'); // Collection of permissions
+```
+
+```bash
+php artisan permission:resource posts
+php artisan permission:resource invoices --actions=view,approve,refund --group=Invoices
+```
+
+### Wildcards
+
+```php
+$role->givePermissionTo('posts.*');
+$user->can('posts.view');   // true
+$user->can('posts.delete'); // true
+
+$user->givePermissionTo('posts.view.*');
+$user->can('posts.view.own'); // true
+```
+
+Exact matches win over wildcards when both are present.
 
 ---
 
@@ -198,6 +226,32 @@ $user->canAll(['posts.view', 'posts.create']);
 
 $user->getRoleNames();
 $user->getPermissionNames();
+
+// Full access dump (roles + effective permissions + totals)
+$export = $user->exportAccess();
+$user->exportAccessJson();
+```
+
+### User access export (kill feature)
+
+Export everything a user can do — assigned roles, direct permissions, wildcard-expanded effective permissions, grouped by resource/group, with totals.
+
+```php
+$export = $user->exportAccess();
+
+$export['totals'];
+// roles, direct_permissions, assigned_permissions, effective_permissions, groups, resources
+
+$export['roles'];                 // each role + its permissions
+$export['direct_permissions'];
+$export['effective_permissions']; // name => source / via / group / resource
+$export['by_group'];
+$export['by_resource'];
+```
+
+```bash
+php artisan permission:export {userId} --type=App\\Models\\User --format=table
+php artisan permission:export 42 --format=json --path=storage/app/user-42-access.json
 ```
 
 ### Decisions
@@ -277,6 +331,48 @@ Logic defaults (config):
 ```
 
 Frontend checks are **UI-only**. Always enforce on the server.
+
+---
+
+## Discovery & PHP attributes
+
+```php
+use Libinkk\Permission\Attributes\Permission;
+
+class PostController
+{
+    #[Permission('posts.publish', description: 'Publish blog posts', group: 'Posts')]
+    public function publish()
+    {
+        //
+    }
+}
+```
+
+```bash
+php artisan permission:discover
+php artisan permission:discover --path=app/Actions --json
+php artisan permission:sync          # discover + create missing DB rows
+php artisan permission:sync --dry-run
+```
+
+Configure extra scan paths in `config/permission.php` → `discovery.paths`.
+
+---
+
+## Artisan commands
+
+| Command | Purpose |
+|---------|---------|
+| `permission:install` | Publish config (+ optional migrate) |
+| `permission:resource` | Create resource permissions |
+| `permission:discover` | Scan `#[Permission]` attributes |
+| `permission:sync` | Persist discovered permissions |
+| `permission:validate` | Integrity checks (duplicates, orphans, conflicts) |
+| `permission:doctor` | Health report for the authorization system |
+| `permission:cache` | Warm registry / role permission caches |
+| `permission:cache:clear` | Invalidate authorization caches |
+| `permission:export` | Export a user's total roles & permissions |
 
 ---
 
@@ -438,17 +534,20 @@ vendor/bin/phpunit
 
 ```text
 src/
-├── Authorization/   Engine, Context, Decision, DecisionReason
+├── Attributes/      PHP #[Permission] attribute
+├── Authorization/   Engine, Context, Decision, UserAccessExporter
 ├── Roles/           Role, RoleManager
 ├── Permissions/     Permission, PermissionManager, Registry, Resolver
+├── Discovery/       AttributeScanner, PermissionDiscovery
 ├── Cache/           PermissionCache, DecisionCache, PermissionFake
+├── Commands/        Artisan DX commands
 ├── Concerns/        HasAuthorization
 ├── Contracts/       Engine, repositories, cache
 ├── Events/
 ├── Middleware/
 ├── Providers/
 ├── Repositories/
-├── Support/
+├── Support/         WildcardMatcher, PermissionValidator, PermissionDoctor
 └── Testing/
 ```
 

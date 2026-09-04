@@ -93,8 +93,11 @@ class EloquentPermissionRepository implements PermissionRepositoryContract
             'slug' => $permission->slug,
             'resource' => $permission->resource,
             'action' => $permission->action,
+            'group' => $permission->group,
             'guard_name' => $permission->guard_name,
             'is_active' => (bool) $permission->is_active,
+            'risk_level' => $permission->risk_level,
+            'is_dangerous' => (bool) $permission->is_dangerous,
         ];
     }
 }

@@ -7,13 +7,25 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Libinkk\Permission\Authorization\AuthorizationEngine;
+use Libinkk\Permission\Authorization\UserAccessExporter;
 use Libinkk\Permission\Cache\DecisionCache;
 use Libinkk\Permission\Cache\PermissionCache;
 use Libinkk\Permission\Cache\PermissionFake;
+use Libinkk\Permission\Commands\CacheCommand;
+use Libinkk\Permission\Commands\ClearCacheCommand;
+use Libinkk\Permission\Commands\DiscoverCommand;
+use Libinkk\Permission\Commands\DoctorCommand;
+use Libinkk\Permission\Commands\ExportUserAccessCommand;
+use Libinkk\Permission\Commands\InstallCommand;
+use Libinkk\Permission\Commands\ResourceCommand;
+use Libinkk\Permission\Commands\SyncCommand;
+use Libinkk\Permission\Commands\ValidateCommand;
 use Libinkk\Permission\Contracts\AuthorizationEngine as AuthorizationEngineContract;
 use Libinkk\Permission\Contracts\PermissionCache as PermissionCacheContract;
 use Libinkk\Permission\Contracts\PermissionRepository as PermissionRepositoryContract;
 use Libinkk\Permission\Contracts\RoleRepository as RoleRepositoryContract;
+use Libinkk\Permission\Discovery\AttributeScanner;
+use Libinkk\Permission\Discovery\PermissionDiscovery;
 use Libinkk\Permission\Middleware\PermissionMiddleware;
 use Libinkk\Permission\Middleware\RoleMiddleware;
 use Libinkk\Permission\Permissions\PermissionManager;
@@ -22,6 +34,8 @@ use Libinkk\Permission\Permissions\PermissionResolver;
 use Libinkk\Permission\Repositories\EloquentPermissionRepository;
 use Libinkk\Permission\Repositories\EloquentRoleRepository;
 use Libinkk\Permission\Roles\RoleManager;
+use Libinkk\Permission\Support\PermissionDoctor;
+use Libinkk\Permission\Support\PermissionValidator;
 
 class PermissionServiceProvider extends ServiceProvider
 {
@@ -39,6 +53,11 @@ class PermissionServiceProvider extends ServiceProvider
         $this->app->singleton(PermissionManager::class);
         $this->app->singleton(RoleManager::class);
         $this->app->singleton(DecisionCache::class);
+        $this->app->singleton(AttributeScanner::class);
+        $this->app->singleton(PermissionDiscovery::class);
+        $this->app->singleton(PermissionValidator::class);
+        $this->app->singleton(PermissionDoctor::class);
+        $this->app->singleton(UserAccessExporter::class);
 
         $this->app->singleton(AuthorizationEngineContract::class, AuthorizationEngine::class);
     }
@@ -51,10 +70,30 @@ class PermissionServiceProvider extends ServiceProvider
 
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
 
+        $this->registerCommands();
         $this->registerGate();
         $this->registerMiddleware();
         $this->registerBlade();
         $this->registerOctaneFlush();
+    }
+
+    protected function registerCommands(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([
+            InstallCommand::class,
+            ResourceCommand::class,
+            DiscoverCommand::class,
+            SyncCommand::class,
+            ValidateCommand::class,
+            DoctorCommand::class,
+            CacheCommand::class,
+            ClearCacheCommand::class,
+            ExportUserAccessCommand::class,
+        ]);
     }
 
     protected function registerGate(): void

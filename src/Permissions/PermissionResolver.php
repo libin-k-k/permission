@@ -84,13 +84,52 @@ class PermissionResolver
 
     public function isRegistered(string $name, string $guard): bool
     {
-        $registry = $this->cache->remember(
+        return isset($this->registry($guard)[$name]);
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public function registry(string $guard): array
+    {
+        return $this->cache->remember(
             "registry:{$guard}",
             'permissions',
             fn () => $this->permissions->allActive($guard)
         );
+    }
 
-        return isset($registry[$name]);
+    /**
+     * Resolve an ability against an assigned permission map (exact, then wildcards).
+     *
+     * @param  array<string, array{source: string, role: ?string}>  $map
+     * @return array{source: string, role: ?string, matched: string, via: string}|null
+     */
+    public function matchPermission(array $map, string $permission): ?array
+    {
+        if (isset($map[$permission])) {
+            return [
+                'source' => $map[$permission]['source'],
+                'role' => $map[$permission]['role'] ?? null,
+                'matched' => $permission,
+                'via' => 'exact',
+            ];
+        }
+
+        foreach ($map as $pattern => $entry) {
+            if (! \Libinkk\Permission\Support\WildcardMatcher::matches((string) $pattern, $permission)) {
+                continue;
+            }
+
+            return [
+                'source' => $entry['source'],
+                'role' => $entry['role'] ?? null,
+                'matched' => (string) $pattern,
+                'via' => 'wildcard:'.$pattern,
+            ];
+        }
+
+        return null;
     }
 
     public function permissionMapCacheSalt(object $user, string $guard): string

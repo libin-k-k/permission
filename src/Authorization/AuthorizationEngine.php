@@ -99,8 +99,9 @@ class AuthorizationEngine implements AuthorizationEngineContract
         }
 
         $map = $this->resolver->permissionMapFor($user, $guard);
+        $entry = $this->resolver->matchPermission($map, $permission);
 
-        if (! isset($map[$permission])) {
+        if ($entry === null) {
             $decision = Decision::deny(
                 permission: $permission,
                 user: $user,
@@ -110,19 +111,24 @@ class AuthorizationEngine implements AuthorizationEngineContract
                 checks: [
                     'permission' => false,
                     'role' => $this->resolver->rolesFor($user, $guard) !== [],
+                    'wildcard' => false,
                 ],
             );
         } else {
-            $entry = $map[$permission];
             $decision = Decision::allow(
                 permission: $permission,
                 user: $user,
                 role: $entry['role'] ?? null,
                 resource: $resource,
                 source: $entry['source'],
+                metadata: [
+                    'matched' => $entry['matched'],
+                    'via' => $entry['via'],
+                ],
                 checks: [
                     'permission' => true,
                     'role' => ($entry['role'] ?? null) !== null,
+                    'wildcard' => str_starts_with($entry['via'], 'wildcard'),
                 ],
             );
         }

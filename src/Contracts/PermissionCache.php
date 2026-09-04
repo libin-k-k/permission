@@ -24,6 +24,11 @@ interface PermissionCache
 
     public function flushRequestCache(): void;
 
+    /**
+     * Invalidate all generation-keyed authorization cache entries.
+     */
+    public function clear(): void;
+
     public function userKey(object $user): string;
 
     public function generations(object $user): string;

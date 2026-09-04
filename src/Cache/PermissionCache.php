@@ -195,6 +195,13 @@ class PermissionCache implements PermissionCacheContract
         $this->computing = [];
     }
 
+    public function clear(): void
+    {
+        $this->bump('generation');
+        $this->forgetRegistry();
+        $this->flushRequestCache();
+    }
+
     public function userKey(object $user): string
     {
         $type = method_exists($user, 'getMorphClass') ? $user->getMorphClass() : $user::class;

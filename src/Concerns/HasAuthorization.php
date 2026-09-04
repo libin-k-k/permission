@@ -230,6 +230,23 @@ trait HasAuthorization
         return $this->authorizeFor($permission, $resource)->toArray();
     }
 
+    /**
+     * Export all roles and effective permissions for this user (totals, sources, groups).
+     *
+     * @return array<string, mixed>
+     */
+    public function exportAccess(?string $guard = null): array
+    {
+        return app(\Libinkk\Permission\Authorization\UserAccessExporter::class)
+            ->export($this, $guard ?? $this->authorizationGuard());
+    }
+
+    public function exportAccessJson(?string $guard = null): string
+    {
+        return app(\Libinkk\Permission\Authorization\UserAccessExporter::class)
+            ->toJson($this, $guard ?? $this->authorizationGuard());
+    }
+
     public function getRoleNames(): Collection
     {
         $roles = app(\Libinkk\Permission\Permissions\PermissionResolver::class)

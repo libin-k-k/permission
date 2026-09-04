@@ -80,4 +80,12 @@ return [
         'enabled' => false,
     ],
 
+    'discovery' => [
+        'enabled' => true,
+        'paths' => [
+            // app_path('Http/Controllers'),
+            // app_path('Actions'),
+        ],
+    ],
+
 ];

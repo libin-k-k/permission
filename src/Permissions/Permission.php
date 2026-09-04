@@ -5,6 +5,7 @@ namespace Libinkk\Permission\Permissions;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Libinkk\Permission\Cache\PermissionFake;
 use Libinkk\Permission\Contracts\PermissionCache;
@@ -79,7 +80,10 @@ class Permission extends Model
         )->withPivot('effect');
     }
 
-    public static function findOrCreate(string $name, ?string $guard = null): self
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    public static function findOrCreate(string $name, ?string $guard = null, array $attributes = []): self
     {
         $guard ??= config('permission.default_guard', 'web');
 
@@ -92,10 +96,89 @@ class Permission extends Model
             return $permission;
         }
 
-        return static::query()->create([
+        return static::query()->create(array_merge([
             'name' => $name,
             'guard_name' => $guard,
-        ]);
+        ], $attributes));
+    }
+
+    /**
+     * @param  list<string>  $actions
+     * @param  array<string, mixed>  $attributes
+     * @return Collection<int, self>
+     */
+    public static function defineResource(string $resource, array $actions, array $attributes = []): Collection
+    {
+        $guard = $attributes['guard'] ?? config('permission.default_guard', 'web');
+        $group = $attributes['group'] ?? Str::headline($resource);
+        unset($attributes['guard'], $attributes['group']);
+
+        return collect($actions)
+            ->filter()
+            ->unique()
+            ->values()
+            ->map(function (string $action) use ($resource, $guard, $group, $attributes) {
+                $name = "{$resource}.{$action}";
+
+                $permission = static::findOrCreate($name, $guard, array_merge([
+                    'resource' => $resource,
+                    'action' => $action,
+                    'group' => $group,
+                ], $attributes));
+
+                $dirty = false;
+
+                foreach (array_merge([
+                    'resource' => $resource,
+                    'action' => $action,
+                    'group' => $group,
+                ], $attributes) as $key => $value) {
+                    if ($permission->{$key} !== $value && $value !== null) {
+                        $permission->{$key} = $value;
+                        $dirty = true;
+                    }
+                }
+
+                if ($dirty) {
+                    $permission->save();
+                }
+
+                return $permission;
+            });
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return Collection<int, self>
+     */
+    public static function crud(string $resource, array $attributes = []): Collection
+    {
+        return static::defineResource($resource, ['view', 'create', 'update', 'delete'], $attributes);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    public static function define(string $name, array $attributes = []): self
+    {
+        $guard = $attributes['guard'] ?? null;
+        unset($attributes['guard']);
+
+        return static::findOrCreate($name, $guard, $attributes);
+    }
+
+    /**
+     * @return Collection<int, self>
+     */
+    public static function inGroup(string $group, ?string $guard = null): Collection
+    {
+        $guard ??= config('permission.default_guard', 'web');
+
+        return static::query()
+            ->where('guard_name', $guard)
+            ->where('group', $group)
+            ->orderBy('name')
+            ->get();
     }
 
     public static function fake(): PermissionFake
