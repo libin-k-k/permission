@@ -13,6 +13,11 @@ class PermissionFake
 
     public static function activate(): self
     {
+        if (function_exists('app') && app()->bound('env') && app()->environment('production')
+            && ! config('permission.testing.allow_fake', false)) {
+            throw new \RuntimeException('Permission::fake() is disabled in production.');
+        }
+
         return self::$instance ??= new self;
     }
 

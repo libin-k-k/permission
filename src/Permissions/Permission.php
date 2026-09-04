@@ -14,11 +14,13 @@ use Libinkk\Permission\Events\PermissionCreated;
 use Libinkk\Permission\Events\PermissionDeleted;
 use Libinkk\Permission\Events\PermissionUpdated;
 use Libinkk\Permission\Roles\Role;
+use Libinkk\Permission\Support\ProtectsSystemRecords;
 use Libinkk\Permission\Support\Tables;
 use Libinkk\Permission\Support\UsesConfiguredKeys;
 
 class Permission extends Model
 {
+    use ProtectsSystemRecords;
     use SoftDeletes;
     use UsesConfiguredKeys;
 

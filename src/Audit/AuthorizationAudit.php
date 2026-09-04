@@ -31,4 +31,18 @@ class AuthorizationAudit extends Model
     {
         return false;
     }
+
+    public function forceDelete(): bool
+    {
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $options
+     */
+    public function update(array $attributes = [], array $options = []): bool
+    {
+        return false;
+    }
 }

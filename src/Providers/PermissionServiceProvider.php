@@ -17,11 +17,20 @@ use Libinkk\Permission\Commands\CacheCommand;
 use Libinkk\Permission\Commands\ClearCacheCommand;
 use Libinkk\Permission\Commands\DiscoverCommand;
 use Libinkk\Permission\Commands\DoctorCommand;
+use Libinkk\Permission\Commands\ExplainCommand;
 use Libinkk\Permission\Commands\ExportUserAccessCommand;
+use Libinkk\Permission\Commands\GraphCommand;
 use Libinkk\Permission\Commands\InstallCommand;
 use Libinkk\Permission\Commands\ResourceCommand;
 use Libinkk\Permission\Commands\SyncCommand;
+use Libinkk\Permission\Commands\UnusedCommand;
 use Libinkk\Permission\Commands\ValidateCommand;
+use Libinkk\Permission\Debug\AuthorizationCollector;
+use Libinkk\Permission\Debug\AuthorizationDebugger;
+use Libinkk\Permission\Debug\DecisionRecorder;
+use Libinkk\Permission\Debug\PermissionGraph;
+use Libinkk\Permission\Debug\TelescopeRecorder;
+use Libinkk\Permission\Debug\UnusedPermissionFinder;
 use Libinkk\Permission\Conditions\Condition;
 use Libinkk\Permission\Conditions\ConditionRegistry;
 use Libinkk\Permission\Conditions\ConditionResolver;
@@ -98,6 +107,12 @@ class PermissionServiceProvider extends ServiceProvider
 
         $this->app->singleton(FrontendPayload::class);
         $this->app->singleton(PermissionMatrix::class);
+        $this->app->singleton(PermissionGraph::class);
+        $this->app->singleton(UnusedPermissionFinder::class);
+        $this->app->singleton(AuthorizationDebugger::class);
+        $this->app->singleton(DecisionRecorder::class);
+        $this->app->singleton(TelescopeRecorder::class);
+        $this->app->singleton(AuthorizationCollector::class);
 
         $this->app->singleton(AuthorizationEngineContract::class, AuthorizationEngine::class);
     }
@@ -115,12 +130,14 @@ class PermissionServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../../database/migrations');
 
         $this->registerFrontendRoutes();
+        $this->registerDebugRoutes();
         $this->registerBuiltinConditions();
         $this->registerCommands();
         $this->registerGate();
         $this->registerMiddleware();
         $this->registerBlade();
         $this->registerAuditListeners();
+        $this->registerDebugIntegrations();
         $this->registerFilament();
         $this->registerOctaneFlush();
     }
@@ -152,6 +169,9 @@ class PermissionServiceProvider extends ServiceProvider
             CacheCommand::class,
             ClearCacheCommand::class,
             ExportUserAccessCommand::class,
+            GraphCommand::class,
+            UnusedCommand::class,
+            ExplainCommand::class,
         ]);
     }
 
@@ -230,6 +250,49 @@ class PermissionServiceProvider extends ServiceProvider
         $events->listen(PolicyChanged::class, [AuditLogger::class, 'handlePolicyChanged']);
         $events->listen(AuthorizationAllowed::class, [AuditLogger::class, 'handleAuthorizationAllowed']);
         $events->listen(AuthorizationDenied::class, [AuditLogger::class, 'handleAuthorizationDenied']);
+        $events->listen(AuthorizationAllowed::class, [DecisionRecorder::class, 'handleAllowed']);
+        $events->listen(AuthorizationDenied::class, [DecisionRecorder::class, 'handleDenied']);
+        $events->listen(AuthorizationAllowed::class, [TelescopeRecorder::class, 'handleAllowed']);
+        $events->listen(AuthorizationDenied::class, [TelescopeRecorder::class, 'handleDenied']);
+    }
+
+    protected function registerDebugRoutes(): void
+    {
+        if (! config('permission.debug.enabled', false) || ! config('permission.debug.routes', true)) {
+            return;
+        }
+
+        $this->app->make('router')->group([
+            'prefix' => trim((string) config('permission.debug.prefix', config('permission.frontend.prefix', 'api')), '/'),
+            'middleware' => config('permission.debug.middleware', config('permission.frontend.middleware', ['web'])),
+        ], function () {
+            $this->loadRoutesFrom(__DIR__.'/../../routes/debug.php');
+        });
+    }
+
+    protected function registerDebugIntegrations(): void
+    {
+        if (! config('permission.debug.enabled', false) || ! config('permission.debug.debugbar', true)) {
+            return;
+        }
+
+        $this->app->booted(function () {
+            if (! $this->app->bound('debugbar')) {
+                return;
+            }
+
+            $bar = $this->app->make('debugbar');
+
+            if (! is_object($bar) || ! method_exists($bar, 'addCollector')) {
+                return;
+            }
+
+            try {
+                $bar->addCollector($this->app->make(AuthorizationCollector::class));
+            } catch (\Throwable) {
+                // DebugBar requires its own collector contract when installed.
+            }
+        });
     }
 
     protected function registerFilament(): void
@@ -273,6 +336,10 @@ class PermissionServiceProvider extends ServiceProvider
 
                 \Libinkk\Permission\Authorization\AuthorizationContext::flush();
                 PermissionFake::reset();
+
+                if ($this->app->bound(DecisionRecorder::class)) {
+                    $this->app->make(DecisionRecorder::class)->flush();
+                }
             });
         }
     }

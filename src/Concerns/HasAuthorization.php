@@ -235,7 +235,7 @@ trait HasAuthorization
             ? $delegation
             : Delegation::query()->findOrFail($delegation);
 
-        return app(DelegationManager::class)->revoke($model, $reason);
+        return app(DelegationManager::class)->revoke($model, $reason, $this);
     }
 
     /**
@@ -323,6 +323,17 @@ trait HasAuthorization
     public function explain(string $permission, mixed $resource = null): array
     {
         return $this->authorizeFor($permission, $resource)->toArray();
+    }
+
+    /**
+     * Developer-facing authorization debug report (CLI, Filament, Telescope, DebugBar).
+     *
+     * @return array<string, mixed>
+     */
+    public function debugAuthorization(string $permission, mixed $resource = null): array
+    {
+        return app(\Libinkk\Permission\Debug\AuthorizationDebugger::class)
+            ->debug($this, $permission, $resource);
     }
 
     /**

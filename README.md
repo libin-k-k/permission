@@ -101,7 +101,7 @@ $user->explain('posts.delete');
 
 ## Features
 
-### Available now (v0.7)
+### Available now (v0.8)
 
 - **Temporary access** — `$user->givePermissionTo('reports.export', expiresAt: now()->addDays(7))`
 - **Scheduled grants** — `startsAt` / `expiresAt` on user permissions and roles
@@ -131,6 +131,10 @@ $user->explain('posts.delete');
 - **Vue / React** — `$can` / `usePermission()` / `<Can>` (UI-only)
 - **Authorization API** — `GET /api/authorization`, `/api/users/{user}/access`, `/api/permissions/matrix`
 - **Filament adapter** — optional traits for resources, pages, widgets, relation managers, actions, forms, tables, bulk, tenant sync
+- **Authorization debugger** — `$user->debugAuthorization()` / `permission:explain` / optional `GET /api/authorization/explain`
+- **Permission graph** — `permission:graph` (role tree + JSON)
+- **Unused permissions** — `permission:unused`
+- **Telescope / DebugBar** — optional recorders when those packages are installed (`debug.enabled`)
 - **Explainable decisions** — `Decision` + condition checks + deny layers
 - **Layered cache** — request-level + store cache, Octane-safe flush
 - **Multi-guard** — `guard_name` on roles/permissions and users
@@ -149,7 +153,8 @@ $user->explain('posts.delete');
 | **v0.5** | Temporary access, delegation, audit logs, versioning ✅ |
 | **v0.6** | Vue / React adapters, authorization API payloads ✅ |
 | **v0.7** | Optional Filament adapter (no Filament Composer dependency) ✅ |
-| **v0.8+** | Debugger, graph, unused permissions, performance & security hardening |
+| **v0.8** | Debugger, graph, unused permissions, CLI explain, Telescope/DebugBar hooks ✅ |
+| **v0.9** | Performance, Octane/queue safety, security review |
 | **v1.0** | Stable docs, upgrade guide, compatibility matrix |
 
 Schema columns for scopes, expiration, and effects are already present where needed so later slices can land without breaking migrations.
@@ -326,6 +331,25 @@ $permission->rollbackTo(1);   // restore snapshot v1
 ```
 
 Audit rows are append-only (no soft deletes).
+
+### Debugger (v0.8)
+
+```php
+$report = $user->debugAuthorization('invoice.approve', $invoice);
+// $report['final'] === 'ALLOWED' | 'DENIED'
+// $report['text']  — CLI / Filament panel copy
+// $report['checks'] — role, source, tenant, scope, conditions, deny, expiration, delegation
+
+FilamentAuthorization::debug('invoice.approve', $invoice);
+```
+
+```bash
+php artisan permission:explain 1 invoice.approve
+php artisan permission:graph --json
+php artisan permission:unused
+```
+
+`GET /api/authorization/explain?permission=invoice.approve` is off until `permission.debug.enabled` is true. It explains the **current user only** and is not a grant. Telescope and DebugBar hooks register only when those packages exist.
 
 ---
 
@@ -568,7 +592,7 @@ $panel->middleware(PermissionFilamentPlugin::middleware());
 
 Bulk mode: `filament.bulk = all` (every selected record) or `any` (partial). Tenant panels: set `filament.enabled` + `sync_tenant` so `AuthorizationContext::tenant(filament()->getTenant())` runs on `ServingFilament`.
 
-Admin CRUD screens, permission matrix UI, and the debugger are not in this slice (debugger is v0.8).
+Admin CRUD screens and the permission matrix UI stay in the optional Filament UI package. Use `FilamentAuthorization::debug()` on a custom page for the v0.8 debugger report.
 
 ---
 
@@ -608,6 +632,9 @@ Configure extra scan paths in `config/permission.php` → `discovery.paths`.
 | `permission:sync` | Persist discovered permissions |
 | `permission:validate` | Integrity checks (duplicates, orphans, conflicts) |
 | `permission:doctor` | Health report for the authorization system |
+| `permission:graph` | Role inheritance tree and per-role permissions |
+| `permission:unused` | Unused, inactive, or unreferenced permissions |
+| `permission:explain` | Why a user is allowed or denied a permission |
 | `permission:cache` | Warm registry / role permission caches |
 | `permission:cache:clear` | Invalidate authorization caches |
 | `permission:export` | Export a user's total roles & permissions |
@@ -680,6 +707,7 @@ return [
     'versioning' => ['enabled' => true],
     'audit' => ['enabled' => false, 'decisions' => false],
     'frontend' => ['enabled' => false, 'routes' => true, 'prefix' => 'api'],
+    'debug' => ['enabled' => false, 'routes' => true, 'prefix' => 'api'],
     'filament' => ['enabled' => false, 'sync_tenant' => true, 'bulk' => 'all'],
 ];
 ```
@@ -779,6 +807,8 @@ vendor/bin/phpunit
 4. **No privilege escalation** via cache, fakes in production, or client payloads.
 5. **Tenant isolation** (when teams/tenants are enabled) must hold in queries, cache keys, and decisions.
 
+Internal assessment (not a third-party cert): [SECURITY-CERTIFICATE.md](SECURITY-CERTIFICATE.md) — **7.4 / 10**, conditional pass (`LPK-SEC-2026-0905-V1`).
+
 ---
 
 ## Package layout
@@ -795,6 +825,7 @@ src/
 ├── Audit/           AuthorizationAudit, AuditLogger
 ├── Frontend/        Payload, matrix, API, Inertia/Blade share
 ├── Filament/        Optional resource/page/widget/relation/tenant adapter
+├── Debug/           Debugger, graph, unused finder, Telescope/DebugBar hooks
 ├── Discovery/       AttributeScanner, PermissionDiscovery
 ├── Cache/           PermissionCache, DecisionCache, PermissionFake
 ├── Commands/        Artisan DX commands

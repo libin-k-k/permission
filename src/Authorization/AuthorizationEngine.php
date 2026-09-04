@@ -82,6 +82,16 @@ class AuthorizationEngine implements AuthorizationEngineContract
 
     protected function decideOrFail(object $user, string $permission, array $arguments = []): Decision
     {
+        if (! is_string($permission) || trim($permission) === '' || str_contains($permission, "\0")) {
+            return Decision::deny(
+                permission: is_string($permission) ? $permission : '',
+                user: $user,
+                resource: $arguments[0] ?? null,
+                reason: DecisionReason::CONTEXT_MISSING,
+                source: 'engine',
+            );
+        }
+
         $resource = $arguments[0] ?? null;
         $guard = $this->guardFor($user);
         $context = new AuthorizationContext($user, $permission, $guard, $resource, $arguments);

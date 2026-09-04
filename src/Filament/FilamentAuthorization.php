@@ -137,6 +137,27 @@ class FilamentAuthorization
     }
 
     /**
+     * Structured debugger report for a Filament page. UI-only — not a security boundary.
+     *
+     * @return array<string, mixed>
+     */
+    public static function debug(string $permission, mixed $record = null, ?object $user = null): array
+    {
+        $user ??= self::user();
+
+        if ($user === null) {
+            return [
+                'final' => 'DENIED',
+                'reason' => 'CONTEXT_MISSING',
+                'text' => "Authorization Debugger\n\nFINAL DECISION:\nDENIED\n\nReason:\nCONTEXT_MISSING\n",
+            ];
+        }
+
+        return app(\Libinkk\Permission\Debug\AuthorizationDebugger::class)
+            ->debug($user, $permission, $record);
+    }
+
+    /**
      * @param  list<mixed>  $arguments
      */
     protected static function recordFromArguments(array $arguments): mixed

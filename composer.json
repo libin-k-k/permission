@@ -68,7 +68,9 @@
         }
     },
     "suggest": {
-        "filament/filament": "Required only when using the optional Filament authorization adapter (v0.7)."
+        "filament/filament": "Required only when using the optional Filament authorization adapter (v0.7).",
+        "laravel/telescope": "Optional authorization decision recording in Telescope (v0.8).",
+        "barryvdh/laravel-debugbar": "Optional authorization collector for DebugBar (v0.8)."
     },
     "scripts": {
         "test": "phpunit"

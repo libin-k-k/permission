@@ -5,6 +5,7 @@ namespace Libinkk\Permission\Support;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Libinkk\Permission\Debug\UnusedPermissionFinder;
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Roles\Role;
 
@@ -12,6 +13,7 @@ class PermissionDoctor
 {
     public function __construct(
         protected PermissionValidator $validator,
+        protected UnusedPermissionFinder $unused,
     ) {
     }
 
@@ -54,10 +56,10 @@ class PermissionDoctor
             $checks[] = $this->warn($warning['message']);
         }
 
-        $unused = $this->unusedPermissionCount($guard);
+        $unused = $this->unused->find($guard);
 
-        if ($unused > 0) {
-            $checks[] = $this->warn("{$unused} unused permissions (never assigned to a role or user)");
+        if ($unused['total'] > 0) {
+            $checks[] = $this->warn("{$unused['total']} unused permissions (run permission:unused)");
         } else {
             $checks[] = $this->ok('No unused permissions');
         }
@@ -70,28 +72,11 @@ class PermissionDoctor
             'report' => [
                 'permissions' => $permissionCount,
                 'roles' => $roleCount,
-                'unused_permissions' => $unused,
+                'unused_permissions' => $unused['total'],
+                'unused' => $unused,
                 'validation' => $validation,
             ],
         ];
-    }
-
-    protected function unusedPermissionCount(string $guard): int
-    {
-        $permissions = Tables::permissions();
-        $rolePermissions = Tables::rolePermissions();
-        $userPermissions = Tables::userPermissions();
-
-        return (int) DB::table($permissions)
-            ->where('guard_name', $guard)
-            ->whereNull('deleted_at')
-            ->whereNotIn('id', function ($query) use ($rolePermissions) {
-                $query->select('permission_id')->from($rolePermissions);
-            })
-            ->whereNotIn('id', function ($query) use ($userPermissions) {
-                $query->select('permission_id')->from($userPermissions);
-            })
-            ->count();
     }
 
     /**

@@ -12,11 +12,13 @@ use Libinkk\Permission\Events\RoleDeleted;
 use Libinkk\Permission\Events\RoleUpdated;
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Roles\RoleHierarchy;
+use Libinkk\Permission\Support\ProtectsSystemRecords;
 use Libinkk\Permission\Support\Tables;
 use Libinkk\Permission\Support\UsesConfiguredKeys;
 
 class Role extends Model
 {
+    use ProtectsSystemRecords;
     use SoftDeletes;
     use UsesConfiguredKeys;
 

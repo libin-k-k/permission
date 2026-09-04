@@ -133,6 +133,17 @@ return [
         'access_user_permission' => null, // e.g. users.access — required to view another user
     ],
 
+    'debug' => [
+        'enabled' => false,
+        'routes' => true,
+        'prefix' => 'api',
+        'middleware' => ['web'],
+        'telescope' => true,
+        'debugbar' => true,
+        'record_decisions' => false,
+        'max_recorded' => 50,
+    ],
+
     'filament' => [
         'enabled' => false,
         'sync_tenant' => true,

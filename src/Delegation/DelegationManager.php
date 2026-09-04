@@ -47,6 +47,11 @@ class DelegationManager
         $guard = $this->guardFor($from);
         $model = Permission::findOrCreate($permission, $guard);
 
+        if ($this->morphType($from) === $this->morphType($to)
+            && (string) $from->getKey() === (string) $to->getKey()) {
+            throw CannotDelegatePermissionException::selfDelegation();
+        }
+
         if (! $this->userCurrentlyHolds($from, $model->name, $guard)) {
             throw CannotDelegatePermissionException::missing($model->name);
         }
@@ -87,8 +92,15 @@ class DelegationManager
         return $delegation;
     }
 
-    public function revoke(Delegation $delegation, ?string $reason = null): Delegation
+    public function revoke(Delegation $delegation, ?string $reason = null, ?object $actor = null): Delegation
     {
+        if ($actor === null
+            || $this->morphType($actor) !== $delegation->from_user_type
+            || (string) $actor->getKey() !== (string) $delegation->from_user_id) {
+            throw CannotDelegatePermissionException::cannotRevoke();
+        }
+
+
         $delegation->status = Delegation::STATUS_REVOKED;
         $delegation->revoked_at = now();
 

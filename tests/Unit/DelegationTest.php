@@ -57,7 +57,7 @@ class DelegationTest extends TestCase
         $owner->givePermissionTo('invoice.approve');
 
         $delegation = $owner->delegate('invoice.approve', to: $manager, until: now()->addHours(4));
-        $manager->revokeDelegation($delegation);
+        $owner->revokeDelegation($delegation);
 
         $this->assertCannot($manager, 'invoice.approve');
         $this->assertSame(Delegation::STATUS_REVOKED, $delegation->fresh()->status);

@@ -83,8 +83,8 @@ class Delegation extends Model
             && $this->expires_at->lte($at);
     }
 
-    public function revoke(?string $reason = null): static
+    public function revoke(?string $reason = null, ?object $actor = null): static
     {
-        return app(DelegationManager::class)->revoke($this, $reason);
+        return app(DelegationManager::class)->revoke($this, $reason, $actor);
     }
 }

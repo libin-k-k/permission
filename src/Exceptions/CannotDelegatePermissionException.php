@@ -15,4 +15,14 @@ class CannotDelegatePermissionException extends RuntimeException
     {
         return new self('Permission delegation is disabled.');
     }
+
+    public static function selfDelegation(): self
+    {
+        return new self('A user cannot delegate a permission to themselves.');
+    }
+
+    public static function cannotRevoke(): self
+    {
+        return new self('Only the delegator can revoke a delegation.');
+    }
 }
