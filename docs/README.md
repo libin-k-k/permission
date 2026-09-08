@@ -1,6 +1,8 @@
 # libinkk/permission docs
 
-- [README](../README.md) — tutorials and API (start here)
+- [SEO tutorial](tutorial.md) — publish at https://www.libinkk.in/permission
+- [Laravel.io article](laravel-io-article.txt) — copy-paste fields for https://laravel.io/articles/create
+- [README](../README.md) — package API reference
 - [Upgrade](../UPGRADE.md) — 0.x → 1.0
 - [Security](../SECURITY.md) — how to report issues
 - [Changelog](../CHANGELOG.md)

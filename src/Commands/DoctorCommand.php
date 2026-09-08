@@ -3,10 +3,13 @@
 namespace Libinkk\Permission\Commands;
 
 use Illuminate\Console\Command;
+use Libinkk\Permission\Commands\Concerns\RendersConsoleStatus;
 use Libinkk\Permission\Support\PermissionDoctor;
 
 class DoctorCommand extends Command
 {
+    use RendersConsoleStatus;
+
     protected $signature = 'permission:doctor
                             {--guard= : Guard to inspect}
                             {--json : Output JSON}';
@@ -40,7 +43,7 @@ class DoctorCommand extends Command
         $this->newLine();
 
         if ($result['healthy']) {
-            $this->components->success('Authorization system is healthy.');
+            $this->successStatus('Authorization system is healthy.');
 
             return self::SUCCESS;
         }

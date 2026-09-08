@@ -4,9 +4,12 @@ namespace Libinkk\Permission\Commands;
 
 use Illuminate\Console\Command;
 use Libinkk\Permission\Authorization\UserAccessExporter;
+use Libinkk\Permission\Commands\Concerns\RendersConsoleStatus;
 
 class ExportUserAccessCommand extends Command
 {
+    use RendersConsoleStatus;
+
     protected $signature = 'permission:export
                             {user : User ID}
                             {--type= : User morph / model class (defaults to configured user model)}
@@ -39,7 +42,7 @@ class ExportUserAccessCommand extends Command
 
         if ($path = $this->option('path')) {
             file_put_contents($path, json_encode($export, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL);
-            $this->components->success("Wrote access export to [{$path}].");
+            $this->successStatus("Wrote access export to [{$path}].");
         }
 
         if ($format === 'json' && ! $this->option('path')) {

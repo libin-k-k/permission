@@ -1,0 +1,418 @@
+================================================================================
+LARAVEL.IO - COPY / PASTE FIELDS
+Publish at: https://laravel.io/articles/create  (sign in with GitHub first)
+Articles are Markdown. Staff moderate before the post goes live.
+================================================================================
+
+TITLE (paste into Title — keep it short; laravel.io uses huge hero type)
+------------------------------------------------------------------------
+Why Laravel Permissions Are Not Authorization
+
+Backup titles (pick one if the first is taken):
+  Laravel Authorization Engine: RBAC, ABAC, and Tenants
+  hasPermissionTo Is Not Enough for Laravel ACL
+
+Do NOT use the long SEO title in this field. A 90+ character title
+(and camelCase like hasPermissionTo) overflows their hero on mobile.
+That overflow is site CSS, not Markdown. Put the long keywords in H2s.
+
+
+ORIGINAL URL (paste into Original URL / canonical - cross-post)
+----------------------------------------------------------------
+https://www.libinkk.in/permission
+
+
+TAGS (click these on laravel.io - official tag list)
+----------------------------------------------------
+Must pick:
+  Authorization
+  Packages
+  Security
+  Laravel
+  Architecture
+
+If you can add more:
+  Authentication
+  Middleware
+  Blade
+  Cache
+  Testing
+
+
+HERO IMAGE (optional)
+---------------------
+https://www.libinkk.in/images/permission-tutorial.png
+Alt text: Laravel authorization engine tutorial - libinkk/permission decide explain fail closed
+
+
+SEO KEYWORDS USED IN THE BODY (do not paste this block on laravel.io)
+---------------------------------------------------------------------
+Laravel authorization, Laravel authorization engine, Laravel permissions,
+Laravel permission package, Laravel RBAC, Laravel ABAC, Laravel ACL,
+role based access control Laravel, attribute based access control Laravel,
+Laravel Gate, Laravel policies, Spatie laravel-permission alternative,
+Silber Bouncer vs Laravel permissions, Laratrust alternative,
+multi-tenant Laravel permissions, Laravel teams permissions,
+permission delegation Laravel, temporary access Laravel,
+explainable authorization, fail closed authorization,
+Laravel Octane permissions, Filament authorization,
+Vue Laravel permissions, React Laravel authorization,
+Laravel 10 Laravel 11 Laravel 12 Laravel 13, PHP 8.1,
+libinkk/permission, composer require libinkk/permission
+
+
+================================================================================
+BODY (select everything below this line → paste into the laravel.io editor)
+================================================================================
+
+Most Laravel apps do not fail at **login**. They fail at **authorization**.
+
+A user is authenticated. `hasPermissionTo('invoice.approve')` returns `true`. The invoice is ₹1,25,000. The manager's limit is ₹50,000. The API still approves.
+
+That gap - **Laravel permissions** versus a real **Laravel authorization** decision - is why teams outgrow a roles table, a Spatie assignment, or a growing `InvoicePolicy`. This article is a practical **Laravel authorization engine** tutorial: the problem, an honest comparison with **Spatie laravel-permission**, **Silber Bouncer**, **Laratrust**, and **Laravel policies**, then install steps and production examples (RBAC, ABAC, multi-tenant ACL, delegation).
+
+Package: [`libinkk/permission`](https://packagist.org/packages/libinkk/permission) **1.0** - Laravel 10, Laravel 11, Laravel 12, Laravel 13 - PHP 8.1+.
+
+Full tutorial (canonical): [www.libinkk.in/permission](https://www.libinkk.in/permission)
+
+---
+
+## The search query you actually have
+
+Developers search for all of these and mean the same production pain:
+
+- Laravel authorization / Laravel ACL / access control list Laravel
+- Laravel RBAC / role based access control Laravel
+- Laravel ABAC / attribute based access control Laravel
+- Laravel permission package / Laravel roles and permissions
+- Spatie laravel-permission alternative
+- Laravel Gate tutorial / Laravel policies vs permissions
+- multi-tenant Laravel permissions / Laravel teams permissions
+- Filament authorization / Vue Laravel permissions
+
+**RBAC** answers: *does this user have this role or permission name?*
+**Authorization** answers: *may this user perform this action on this resource, in this tenant, under these conditions, right now - and if not, why?*
+
+`libinkk/permission` is the second thing. USP: **authorization that explains itself.**
+
+```php
+$user->can('invoice.approve', $invoice);
+$user->explain('invoice.approve', $invoice);
+```
+
+It does **not** replace Laravel authentication, own your `users` table, or treat Blade / Vue / React / Filament as a security boundary. Those UIs only hide buttons. The write path is still Laravel → Gate → this engine → ALLOW or DENY.
+
+---
+
+## The current problem in Laravel apps
+
+Typical stack:
+
+1. Install **Spatie laravel-permission** or **Bouncer**
+2. Check `$user->hasPermissionTo('posts.edit')` or `$user->can('edit', $post)`
+3. Grow a **Laravel policy** per model
+4. Hide buttons with `@can` or `v-if="can('users.delete')"`
+
+What breaks:
+
+**1. Permission is not authorization.**  
+Rahul has `invoice.approve`. Amount exceeds his limit. A boolean permission check still says yes. Finance needs **ABAC** and a deny reason (`CONDITION_FAILED`).
+
+**2. Multi-tenant Laravel leaks.**  
+Priya is editor in Org North and viewer in Org South. A global `can('posts.create')` without tenant context is a cross-tenant ACL bug.
+
+**3. Leave cover is a cloned role.**  
+Someone assigns the finance role for a week and forgets to remove it. There is no **temporary access**, no **permission delegation**, no revoke-by-delegator rule.
+
+**4. UI is treated as security.**  
+Vue / Livewire / Filament hide the button. `POST /invoices/4821/approve` still works.
+
+**5. Nobody can explain a 403.**  
+Support asks why. The log says `false`. No role, no tenant, no expired grant, no condition.
+
+**6. Laravel Octane and queues leak context.**  
+A worker keeps the last tenant. The next job authorizes the wrong company.
+
+**7. Policy forest.**  
+Each `*Policy` re-implements admin, ownership, and roles until two policies disagree.
+
+Laravel ships excellent **authentication** and a **Gate**. Most **Laravel permission packages** stop at **assignment**. Production SaaS needs a **decision**.
+
+---
+
+## How a Laravel authorization engine solves it
+
+`libinkk/permission` hooks dotted names such as `invoice.approve` into the **Laravel Gate**. One path:
+
+```text
+User → tenant / scope context → permission map
+    → explicit deny / allow → roles → inheritance
+    → ABAC conditions / ownership → expiry → delegation
+    → Decision { allowed, reason, source, checks }
+    → L1 / L2 / optional L3 cache
+```
+
+**Fail closed authorization:** if the name is blank, a condition throws, or required tenant context is missing, the result is DENY - never an accidental allow.
+
+```php
+$decision = $user->authorizeFor('invoice.approve', $invoice);
+
+$decision->allowed(); // bool
+$decision->reason;    // CONDITION_FAILED
+$decision->source;    // role:finance-manager | direct | delegation | engine
+$decision->toArray();
+```
+
+That structured `Decision` is **explainable authorization**. It is what Spatie / Bouncer / a raw policy do not give you out of the box.
+
+---
+
+## Compare Laravel permission packages
+
+This is an engineering comparison, not a takedown.
+
+- **Spatie laravel-permission** is excellent at assigning roles.
+- **Silber Bouncer** is elegant for abilities.
+- **Laratrust** is strong on teams.
+- **Laravel policies / Gate** are PHP you write yourself.
+- **libinkk/permission** is the **authorization engine** (decide + explain).
+
+**Same in every option**
+
+- Assign roles / permissions: Spatie, Bouncer, Laratrust yes. Policies: you write it.
+- `$user->can()` / Laravel Gate: Spatie via Gate. Others yes.
+- None of them own your `users` table.
+
+**What only the engine gives you out of the box**
+
+- Structured `Decision` + `explain()` (others return true / false)
+- Fail closed authorization when a check is unsafe
+- Explicit deny vs allow (Bouncer has forbid; others are extra work)
+- Laravel ABAC conditions on the permission (others: write a policy)
+- Ownership via `.own`
+- Multi-tenant Laravel permissions (`AuthorizationContext`; Spatie and Laratrust have teams, Bouncer has scope)
+- Temporary `expiresAt` and permission delegation
+- Append-only audit log (opt-in) and permission version / rollback
+- Wildcard `posts.*` and role hierarchy
+- Vue / React helpers and optional Filament authorization (UI only, not a grant)
+- Layered cache + Laravel Octane / queue flush
+
+On Spatie, Bouncer, Laratrust, or a raw policy you usually write expiry, delegation, audit, explain, and Octane isolation yourself.
+
+**Keep Spatie or Bouncer** if you only need “user has role editor” and a few Blade `@role` checks.
+
+**Keep Laravel policies** if three methods on `PostPolicy` will stay that small.
+
+**Use this engine** when the same permission changes meaning with amount, owner, tenant, or time - or when support must explain a denial.
+
+---
+
+## Install the Laravel permission package
+
+```bash
+composer require libinkk/permission:^1.0
+php artisan permission:install --migrate
+php artisan permission:doctor
+```
+
+Set `permission.database.primary_key` to `bigint`, `uuid`, or `ulid` **before** the first migrate.
+
+```php
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Libinkk\Permission\Concerns\HasAuthorization;
+
+class User extends Authenticatable
+{
+    use HasAuthorization;
+}
+```
+
+The package does **not** own `users`. Assignments are polymorphic `user_type` / `user_id`.
+
+Packagist: [packagist.org/packages/libinkk/permission](https://packagist.org/packages/libinkk/permission)
+
+---
+
+## Real-time example 1 - Laravel RBAC (company blog)
+
+**Role based access control Laravel** in 15 minutes. Viewers read. Editors write. Admins publish and delete.
+
+```php
+use Libinkk\Permission\Permissions\Permission;
+use Libinkk\Permission\Roles\Role;
+
+Permission::defineResource('posts', ['view', 'create', 'update', 'delete', 'publish'], ['group' => 'Posts']);
+
+Role::findOrCreate('viewer')->givePermissionTo('posts.view');
+Role::findOrCreate('editor')->givePermissionTo('posts.view', 'posts.create', 'posts.update');
+Role::findOrCreate('admin')->givePermissionTo('posts.*');
+
+$meera->assignRole('editor');
+```
+
+Protect the write path with **Laravel middleware** and the Gate - not only Blade:
+
+```php
+Route::post('/posts', [PostController::class, 'store'])
+    ->middleware(['auth', 'permission:posts.create']);
+
+public function store(Request $request)
+{
+    $this->authorize('posts.create');
+
+    return Post::query()->create($request->validated());
+}
+```
+
+```blade
+@can('posts.create')
+    <a href="{{ route('posts.create') }}">New post</a>
+@endcan
+```
+
+`@can` is UX. Middleware and `$this->authorize()` are the **Laravel ACL** grant.
+
+---
+
+## Real-time example 2 - Laravel ABAC (invoice approval limit)
+
+**Attribute based access control Laravel**: same permission, different invoice.
+
+```php
+Permission::define('invoice.approve', ['group' => 'Finance', 'is_dangerous' => true]);
+
+Condition::define('within_approval_limit', fn ($user, $invoice) =>
+    (int) $invoice->amount <= (int) $user->approval_limit
+);
+
+Permission::define('invoice.approve')->when('within_approval_limit');
+
+$rahul->givePermissionTo('invoice.approve');
+$rahul->approval_limit = 50_000;
+```
+
+Rahul may approve ₹20,000. He may not approve ₹1,25,000. `explain()` returns `CONDITION_FAILED` instead of a silent `false`. That is the difference between a **Laravel permission package** that stores names and a **Laravel authorization engine**.
+
+---
+
+## Real-time example 3 - Multi-tenant Laravel permissions
+
+Priya is editor in Org North and viewer in Org South.
+
+```php
+AuthorizationContext::tenant($orgNorth);
+
+$priya->can('posts.create'); // true in North
+
+AuthorizationContext::tenant($orgSouth);
+
+$priya->can('posts.create'); // false in South
+```
+
+Tenant id is part of the decision and the cache key. That is **Laravel teams permissions** without leaking North rights into South - a common SaaS ACL bug.
+
+Enable teams in config when you need this (`permission.teams.enabled`). Isolation is a first-class **authorization context**, not a `where tenant_id` you hope every query remembered.
+
+---
+
+## Real-time example 4 - Permission delegation and temporary access
+
+**Permission delegation Laravel** (leave cover) without cloning the finance role:
+
+```php
+$rahul->delegate(
+    to: $anika,
+    permissions: ['invoice.approve'],
+    until: now()->addHours(8),
+    resource: $smallInvoice,
+);
+```
+
+No self-delegation. The delegator revokes. The grant expires. Weekend auditor? Use `givePermissionTo(..., expiresAt:)` instead of a permanent role.
+
+That is **temporary access Laravel** - the feature people rebuild on top of Spatie at 2 a.m.
+
+---
+
+## Laravel Gate, policies, Filament, Vue, and React
+
+The engine is **Laravel-native**:
+
+- `$user->can('posts.publish')` and `$this->authorize('posts.publish')`
+- middleware `permission:`, `role:`
+- Blade `@can` / `@cannot`
+- optional **Filament authorization** adapter (Filament is UI only)
+- Vue / React helpers and an authorization API payload for Inertia / SPA
+
+Frontend state is **not a grant**. A forged `can: true` in localStorage must still 403 on the server. Same rule for Filament actions.
+
+You can still run a **Laravel policy** after the engine if the host app wants both. Policies are not an automatic engine step in 1.0.
+
+---
+
+## Performance, Laravel Octane, and cache
+
+Production authorization is a hot path:
+
+- layered cache (request memory → Laravel cache → optional Redis L3)
+- `authorizeMany()` / `permissionsFor()` / `preloadAuthorization()` to avoid N+1 ACL queries
+- cache keys include tenant so multi-tenant decisions do not collide
+- Octane and queue workers flush tenant, impersonation, and request cache per job
+
+Database remains source of truth. Redis is the performance layer. Cache write failure never becomes ALLOW.
+
+---
+
+## Developer tools (not a second security layer)
+
+- `php artisan permission:doctor`
+- `permission:explain`, `permission:graph`, `permission:unused`
+- `$user->debugAuthorization()` when `debug.enabled` is on (local / staging)
+
+These explain a decision. They do not grant one.
+
+---
+
+## When not to switch
+
+If your app is a blog with three roles and no money movement, **Spatie laravel-permission** or a small **Laravel policy** is enough. Do not rewrite for fashion.
+
+Switch when you are already writing the same ABAC, tenant, expiry, and “why 403?” code in every policy - that is when an engine pays for itself.
+
+---
+
+## Links
+
+- Tutorial (canonical): [https://www.libinkk.in/permission](https://www.libinkk.in/permission)
+- Site: [https://www.libinkk.in](https://www.libinkk.in)
+- Packagist: [https://packagist.org/packages/libinkk/permission](https://packagist.org/packages/libinkk/permission)
+- Security reports: libinkk1999@gmail.com
+
+```bash
+composer require libinkk/permission:^1.0
+php artisan permission:install --migrate
+php artisan permission:doctor
+```
+
+**Laravel authorization** should answer one question, every time: *this user, this action, this resource, this tenant, these conditions - and if not, why.*
+
+That is RBAC + ABAC + multi-tenant ACL + delegation in one **fail closed** path. That is `libinkk/permission`.
+
+================================================================================
+END OF BODY
+================================================================================
+
+HOW TO PUBLISH (checklist)
+--------------------------
+1. Open https://laravel.io/articles/create and sign in with GitHub.
+2. Paste TITLE.
+3. Paste ORIGINAL URL: https://www.libinkk.in/permission
+4. Click tags: Authorization, Packages, Security, Laravel, Architecture.
+5. Paste BODY (from "Most Laravel apps..." through the last paragraph).
+6. Optional: attach the hero image.
+7. Submit for approval. Laravel.io emails you when it is live.
+
+Do not paste the SEO KEYWORDS list or this checklist into the article.
+Do not paste any Markdown table (| col | col |). laravel.io does not
+scroll wide tables on mobile and the page overflows sideways.
+The keywords are already written into the title, headings, and first paragraphs.

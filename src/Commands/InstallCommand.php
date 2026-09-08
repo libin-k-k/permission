@@ -4,9 +4,12 @@ namespace Libinkk\Permission\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
+use Libinkk\Permission\Commands\Concerns\RendersConsoleStatus;
 
 class InstallCommand extends Command
 {
+    use RendersConsoleStatus;
+
     protected $signature = 'permission:install
                             {--migrate : Run package migrations}
                             {--frontend : Publish Vue / React helpers}
@@ -36,7 +39,7 @@ class InstallCommand extends Command
             $this->components->twoColumnDetail('Next', 'php artisan migrate');
         }
 
-        $this->components->success('libinkk/permission installed.');
+        $this->successStatus('libinkk/permission installed.');
 
         return self::SUCCESS;
     }

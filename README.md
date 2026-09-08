@@ -25,6 +25,7 @@ This is **not** a thin roles CRUD helper. Blade, Vue, React, and Filament are **
 | [UPGRADE.md](UPGRADE.md) | 0.x → 1.0 |
 | [SECURITY.md](SECURITY.md) | How to report issues |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [docs/tutorial.md](docs/tutorial.md) | SEO tutorial for [www.libinkk.in/permission](https://www.libinkk.in/permission) |
 | [docs/deployment.md](docs/deployment.md) | Production checklist |
 | [docs/benchmarks.md](docs/benchmarks.md) | Cache / query notes |
 

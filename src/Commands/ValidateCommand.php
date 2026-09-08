@@ -3,10 +3,13 @@
 namespace Libinkk\Permission\Commands;
 
 use Illuminate\Console\Command;
+use Libinkk\Permission\Commands\Concerns\RendersConsoleStatus;
 use Libinkk\Permission\Support\PermissionValidator;
 
 class ValidateCommand extends Command
 {
+    use RendersConsoleStatus;
+
     protected $signature = 'permission:validate
                             {--guard= : Limit validation to a guard}
                             {--json : Output JSON}';
@@ -32,7 +35,7 @@ class ValidateCommand extends Command
         }
 
         if ($result['ok']) {
-            $this->components->success('Permission validation passed.');
+            $this->successStatus('Permission validation passed.');
 
             return self::SUCCESS;
         }

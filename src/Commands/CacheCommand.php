@@ -4,9 +4,12 @@ namespace Libinkk\Permission\Commands;
 
 use Illuminate\Console\Command;
 use Libinkk\Permission\Cache\PermissionPreloader;
+use Libinkk\Permission\Commands\Concerns\RendersConsoleStatus;
 
 class CacheCommand extends Command
 {
+    use RendersConsoleStatus;
+
     protected $signature = 'permission:cache
                             {--guard= : Guard to warm}';
 
@@ -16,7 +19,7 @@ class CacheCommand extends Command
     {
         $result = $preloader->warmGuard($this->option('guard') ?: null);
 
-        $this->components->success(
+        $this->successStatus(
             "Warmed cache for guard [{$result['guard']}] ({$result['roles']} roles, {$result['permissions']} permissions)."
         );
 
