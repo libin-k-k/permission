@@ -1,14 +1,15 @@
-# v1 Security Certificate
+# v1.1 Security Certificate
 
 | Field | Value |
 |--------|--------|
-| **ID** | `LPK-SEC-2026-0905-V1` |
+| **ID** | `LPK-SEC-2026-0908-V1.1` |
+| **Supersedes** | `LPK-SEC-2026-0905-V1` |
 | **Subject** | `libinkk/permission` |
-| **Scope** | v0.1–v0.7 authorization engine (RBAC, ABAC, tenants, delegation, audit, frontend, Filament adapter) |
-| **Score** | **7.4 / 10** |
+| **Scope** | v1.0 authorization engine (RBAC, ABAC, tenants, delegation, audit, frontend, Filament adapter, debug tools, cache layers) |
+| **Score** | **8.0 / 10** |
 | **Disposition** | **CONDITIONAL PASS** |
-| **Issued** | 5 September 2026 |
-| **Evidence** | 135 PHPUnit tests / 376 assertions (local SQLite) |
+| **Issued** | 8 September 2026 |
+| **Evidence** | 164 PHPUnit tests / 472 assertions; GitHub Actions 10/10 green (PHP 8.1–8.5 × Laravel 10–13) |
 | **Issuer** | Internal engineering assessment (not an accredited CA) |
 
 This is an **internal scorecard**, not ISO, SOC 2, or third-party pentest attestation. Reproduce with:
@@ -16,6 +17,12 @@ This is an **internal scorecard**, not ISO, SOC 2, or third-party pentest attest
 ```bash
 vendor/bin/phpunit --no-coverage
 ```
+
+CI: [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
+
+## Why this revision
+
+`LPK-SEC-2026-0905-V1` scored **Independent verification / CI at 4.0** because only local PHPUnit existed. On 8 September 2026 the GitHub Actions matrix completed green, including PHP 8.5 / Laravel 12 and PHP 8.5 / Laravel 13. `SECURITY.md`, `UPGRADE.md`, and `docs/deployment.md` also exist. Those close documentation and CI evidence gaps. They do **not** replace a pentest or SAST.
 
 ## Conditional production use
 
@@ -26,11 +33,11 @@ The PHP authorization engine may be used in production if the host app:
 - Enables tenant context on every request when teams are on
 - Leaves frontend APIs and decision audit off unless needed
 
-Independent CI, pentest, and v1.0 ops docs are still outstanding.
+Pentest and SAST are still outstanding.
 
 ## Domain scores
 
-Weighted mean **7.4 / 10**.
+Weighted mean **8.0 / 10**.
 
 | Domain | Score | Weight | Notes |
 |--------|------:|-------:|-------|
@@ -40,11 +47,11 @@ Weighted mean **7.4 / 10**.
 | Delegation & time-bound access | 8.5 | 10% | No self-delegate, no re-delegate, only delegator revokes |
 | Input / injection resistance | 8.0 | 8% | Bound queries; injection-style names do not match |
 | Frontend trust boundary | 8.0 | 8% | Payload UI-only; guest empty; access is self-only |
-| Cache integrity | 7.5 | 8% | No cross-user leak; no stampede / Octane proof |
+| Cache integrity | 8.0 | 8% | No cross-user leak; Octane/queue flush tested; no published load-lab SLA |
 | Audit tamper resistance | 7.5 | 7% | `delete` / `update` / `forceDelete` rejected; audit off by default |
-| Independent verification / CI | 4.0 | 7% | Local PHPUnit only; no matrix, SAST, or pentest |
+| Independent verification / CI | 6.5 | 7% | GitHub Actions matrix green; still no SAST or pentest |
 | System-record protection | 8.0 | 5% | `is_system` delete / unprotect throws |
-| Operational maturity | 5.0 | 5% | No `SECURITY.md` reporting policy, upgrade guide, or scheduled expire job |
+| Operational maturity | 6.5 | 5% | `SECURITY.md`, `UPGRADE.md`, deployment guide; no scheduled `expireStale` job |
 
 ## Controls verified
 
@@ -60,26 +67,28 @@ Weighted mean **7.4 / 10**.
 - Cache does not leak across users; grant invalidates stale deny
 - Audit rows immutable; frontend payload is not a grant
 - `Permission::fake()` disabled in production
+- GitHub Actions matrix green: Laravel 10–13, PHP 8.1–8.5
+- Octane / queue workers flush request cache, tenant, and impersonation
+- UUID / ULID pivot keys set on attach
 
 **Open (score deductions)**
 
-- No GitHub Actions matrix for Laravel 10–13
 - `POLICY_DENIED` is defined but unused (policies are not an engine step)
-- No Octane isolation, UUID / ULID, or load tests
+- No published load-lab SLA or cache-stampede study
 - Vue / React helpers are not executed in PHPUnit
 - Filament / Inertia optional paths are not live-tested
-- No third-party pentest or upgrade guide
+- No third-party pentest or SAST
 - `Delegation::expireStale()` has no scheduler (timestamps still deny)
 
 ## How to read this score
 
 | Band | Meaning |
 |------|---------|
-| 9.0–10 | Independent audit + CI matrix + ops docs — not this package yet |
-| 7.0–8.9 | Engine design sound; verified in-repo; production with constraints |
+| 9.0–10 | Independent pentest / SAST plus CI and ops docs |
+| 7.0–8.9 | Engine design sound; verified in-repo and CI; production with constraints |
 | 5.0–6.9 | Core works but material control or evidence gaps |
 | Below 5 | Do not ship as an authorization boundary |
 
 ---
 
-`LPK-SEC-2026-0905-V1` · `libinkk/permission` · 5 September 2026
+`LPK-SEC-2026-0908-V1.1` · supersedes `LPK-SEC-2026-0905-V1` · `libinkk/permission` · 8 September 2026

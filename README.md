@@ -686,7 +686,7 @@ vendor/bin/phpunit --no-coverage
 4. No privilege escalation via cache, fakes, or client payloads.
 5. Tenant isolation when teams are on.
 
-See [SECURITY.md](SECURITY.md). Internal scorecard: [SECURITY-CERTIFICATE.md](SECURITY-CERTIFICATE.md) (7.4 / 10, not a third-party cert).
+See [SECURITY.md](SECURITY.md). Internal scorecard: [SECURITY-CERTIFICATE.md](SECURITY-CERTIFICATE.md) (8.0 / 10, not a third-party cert).
 
 Production settings: [docs/deployment.md](docs/deployment.md).
 

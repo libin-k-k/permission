@@ -37,4 +37,4 @@ We will acknowledge the report and work a fix before any public disclosure.
 - Audit rows are append-only
 - Debug and frontend APIs are off until enabled; explain is current-user only
 
-Internal scorecard: [SECURITY-CERTIFICATE.md](SECURITY-CERTIFICATE.md) (`LPK-SEC-2026-0905-V1`, 7.4 / 10, conditional pass). That file is **not** a third-party certificate.
+Internal scorecard: [SECURITY-CERTIFICATE.md](SECURITY-CERTIFICATE.md) (`LPK-SEC-2026-0908-V1.1`, 8.0 / 10, conditional pass). That file is **not** a third-party certificate.
