@@ -67,8 +67,8 @@ This is **not** a thin roles CRUD helper. Blade, Vue, React, and Filament are **
 |---------|-----|
 | 10 | 8.1 – 8.3 |
 | 11 | 8.2 – 8.4 |
-| 12 | 8.2 – 8.4 |
-| 13 | 8.3 – 8.4 |
+| 12 | 8.2 – 8.5 |
+| 13 | 8.3 – 8.5 |
 
 Package version: `Libinkk\Permission\Version::VERSION` → **1.0.0**.
 
