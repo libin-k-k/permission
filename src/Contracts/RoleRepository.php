@@ -22,5 +22,10 @@ interface RoleRepository
      */
     public function permissionEntriesForRole(int|string $roleId): array;
 
+    /**
+     * True when at least one active role for the guard grants the ability (exact or wildcard allow).
+     */
+    public function anyRoleGrants(string $permission, string $guard): bool;
+
     public function findOrCreate(string $name, string $guard): array;
 }

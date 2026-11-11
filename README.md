@@ -1,6 +1,6 @@
 # libinkk/permission
 
-**v1.0** — production-grade Laravel authorization engine.
+**v1.0** – production-grade Laravel authorization engine.
 
 RBAC + ABAC + tenants + temporary access + delegation + explainable decisions + layered cache.
 
@@ -10,7 +10,7 @@ Most permission packages answer: *Does this user have this permission?*
 
 This package answers:
 
-> Is this user allowed to perform this action on this resource, in the current scope, under the current conditions — and if not, why?
+> Is this user allowed to perform this action on this resource, in the current scope, under the current conditions – and if not, why?
 
 ```php
 $user->can('invoice.approve', $invoice);
@@ -35,9 +35,9 @@ This is **not** a thin roles CRUD helper. Blade, Vue, React, and Filament are **
 
 1. [Compatibility](#compatibility)
 2. [Installation](#installation)
-3. [Tutorial 1 — Blog in 15 minutes](#tutorial-1--blog-in-15-minutes)
-4. [Tutorial 2 — Invoice approval (ABAC + delegation)](#tutorial-2--invoice-approval-abac--delegation)
-5. [Tutorial 3 — Multi-tenant SaaS](#tutorial-3--multi-tenant-saas)
+3. [Tutorial 1 – Blog in 15 minutes](#tutorial-1--blog-in-15-minutes)
+4. [Tutorial 2 – Invoice approval (ABAC + delegation)](#tutorial-2--invoice-approval-abac--delegation)
+5. [Tutorial 3 – Multi-tenant SaaS](#tutorial-3--multi-tenant-saas)
 6. [Permission naming](#permission-naming)
 7. [Roles and users](#roles-and-users)
 8. [Wildcards, hierarchy, deny](#wildcards-hierarchy-deny)
@@ -110,7 +110,7 @@ php artisan permission:doctor
 
 ---
 
-## Tutorial 1 — Blog in 15 minutes
+## Tutorial 1 – Blog in 15 minutes
 
 Goal: editors can write posts, admins can delete, guests cannot.
 
@@ -183,7 +183,7 @@ public function store(Request $request)
 
 ---
 
-## Tutorial 2 — Invoice approval (ABAC + delegation)
+## Tutorial 2 – Invoice approval (ABAC + delegation)
 
 Goal: finance managers approve invoices under their limit. A manager on leave can delegate.
 
@@ -210,7 +210,7 @@ $ok = Invoice::query()->create(['amount' => 20_000]);
 $over = Invoice::query()->create(['amount' => 125_000]);
 
 $manager->can('invoice.approve', $ok);   // true
-$manager->can('invoice.approve', $over); // false — CONDITION_FAILED
+$manager->can('invoice.approve', $over); // false – CONDITION_FAILED
 
 $decision = $manager->authorizeFor('invoice.approve', $over);
 $decision->reason;      // CONDITION_FAILED
@@ -244,7 +244,7 @@ php artisan permission:explain 10 invoice.approve
 
 ---
 
-## Tutorial 3 — Multi-tenant SaaS
+## Tutorial 3 – Multi-tenant SaaS
 
 Goal: the same user is an editor in Org A and a viewer in Org B.
 
@@ -266,7 +266,7 @@ AuthorizationContext::tenant($orgA);
 $user->can('posts.create'); // editor in A
 
 AuthorizationContext::switch($orgB);
-$user->can('posts.create'); // isolated — viewer in B
+$user->can('posts.create'); // isolated – viewer in B
 ```
 
 Nested scopes (organization → workspace):
@@ -307,7 +307,7 @@ invoices.approve
 reports.export
 ```
 
-Names that contain `.` are managed by this package through `Gate::before`.
+`Gate::before` handles dotted names (`resource.action`) **and** any non-dotted name that is already registered in the permissions table. Other abilities fall through to Laravel policies / Gates.
 
 ```php
 Permission::defineResource('posts', ['view', 'create', 'update', 'delete', 'publish'], [
@@ -366,7 +366,7 @@ $user->givePermissionTo('posts.view.*');
 $user->can('posts.view.own'); // true
 ```
 
-Exact matches beat wildcards. A wildcard does not cross resources (`posts.*` is not `invoices.view`).
+Exact matches beat wildcards. A resource wildcard does not cross resources (`posts.*` is not `invoices.view`), but `posts.*` does cover deeper names under that resource (for example `posts.view.own`). A lone `*` matches everything – prefer exact grants plus deny.
 
 ```php
 Role::inherit('admin', 'manager');   // admin inherits manager
@@ -428,7 +428,7 @@ $user->assignRole('contractor', expiresAt: now()->addHours(4));
 
 After expiry, `can()` is false with `EXPIRED_PERMISSION` or `DELEGATION_EXPIRED`.
 
-Delegation rules: delegator must hold the permission; no self-delegate; no re-delegate; only the delegator revokes; expired/revoked never authorize.
+Delegation rules: delegator must currently hold the permission; no self-delegate; only the delegator revokes; expired/revoked never authorize. Re-delegation throws `CannotDelegatePermissionException::redelegate()`. If the delegator later loses the permission, the cover user’s delegated access fails too.
 
 ---
 
@@ -437,7 +437,7 @@ Delegation rules: delegator must hold the permission; no self-delegate; no re-de
 ```php
 'audit' => [
     'enabled' => true,
-    'decisions' => false, // every can() — leave off in production
+    'decisions' => false, // every can() – leave off in production
 ],
 ```
 
@@ -446,7 +446,7 @@ $permission->history();
 $permission->rollbackTo(1);
 ```
 
-Audit rows are append-only (no update / delete / soft delete).
+Audit rows are append-only: Eloquent throws `AuditImmutableException` on `update` / `delete` / `forceDelete`, and DB triggers block raw SQL updates/deletes (SQLite / MySQL / MariaDB / PostgreSQL). No soft deletes.
 
 ---
 
@@ -471,10 +471,16 @@ Route::middleware('role:admin|editor')->group(...);
 
 ## Blade
 
+Package registers `@role`, `@canall`, and `@permissionPayload`. `@can` / `@canany` are Laravel’s built-ins and still go through `Gate::before` for managed abilities.
+
 ```blade
 @can('posts.create')
     <a href="{{ route('posts.create') }}">New post</a>
 @endcan
+
+@canany(['posts.create', 'posts.update'])
+    <a href="{{ route('posts.edit', $post) }}">Edit</a>
+@endcanany
 
 @role('admin')
     <p>Admin</p>
@@ -538,7 +544,7 @@ const { can, canAny, canAll, hasRole } = usePermission();
 Off until `permission.frontend.enabled` is true.
 
 ```php
-permission_payload(); // current user — UI only
+permission_payload(); // current user – UI only
 ```
 
 ```http
@@ -608,21 +614,21 @@ $report['checks'];
 ```
 
 ```bash
-php artisan permission:install
-php artisan permission:resource posts
-php artisan permission:discover
-php artisan permission:sync
+php artisan permission:install --migrate
+php artisan permission:resource posts --actions=view,create,update,delete --group=Posts
+php artisan permission:discover --path=app/Http/Controllers
+php artisan permission:sync --dry-run
 php artisan permission:validate
-php artisan permission:doctor
+php artisan permission:doctor --json
 php artisan permission:graph --json
 php artisan permission:unused
-php artisan permission:explain {userId} invoice.approve
+php artisan permission:explain {userId} invoice.approve --json
 php artisan permission:cache
 php artisan permission:cache:clear
-php artisan permission:export {userId}
+php artisan permission:export {userId} --format=table
 ```
 
-`GET /api/authorization/explain?permission=…` is off until `debug.enabled`. Current user only. Not a grant.
+`permission:explain` is user + permission name (no resource instance). Use `$user->debugAuthorization(...)` / `$user->explain(...)` when you need a model. `GET /api/authorization/explain?permission=…` is off until `debug.enabled`. Current user only. Not a grant.
 
 ---
 
@@ -649,7 +655,7 @@ Prefix: `libinkk:permission:v1`. Redis L3 is off until `cache.redis.enabled` is 
 | Scopes | 1800 |
 | Decisions | 300 |
 
-Mutations invalidate after DB commit. Octane and queue workers flush request state each cycle.
+Mutations invalidate after DB commit. Raw `DB::table` writes on permission tables also bump the cache generation when `cache.watch_db_mutations` is true (default). Octane and queue workers flush request state each cycle.
 
 Details: [docs/benchmarks.md](docs/benchmarks.md).
 
@@ -692,6 +698,8 @@ Production settings: [docs/deployment.md](docs/deployment.md).
 
 ### Configuration (defaults)
 
+Publish `config/permission.php` for the full surface (`models`, `table_names`, discovery paths, Filament action map, cache locks/TTLs). Common defaults:
+
 ```php
 return [
     'enabled' => true,
@@ -703,19 +711,42 @@ return [
     'cache' => [
         'enabled' => true,
         'prefix' => 'libinkk:permission:v1',
+        'ttl' => [
+            'permissions' => 86400,
+            'roles' => 86400,
+            'user_roles' => 3600,
+            'user_permissions' => 3600,
+            'scopes' => 1800,
+            'decisions' => 300,
+        ],
         'redis' => ['enabled' => false, 'store' => 'redis'],
         'decision_cache' => ['enabled' => true],
+        'watch_db_mutations' => true,
     ],
-    'teams' => ['enabled' => false, 'require_context' => false],
+    'middleware' => [
+        'permission_logic' => 'or',
+        'role_logic' => 'or',
+    ],
+    'teams' => [
+        'enabled' => false,
+        'require_context' => false,
+        'global_roles' => ['cross_tenant' => false],
+    ],
     'hierarchy' => ['enabled' => true],
     'deny' => ['enabled' => true],
+    'conditions' => ['enabled' => true],
+    'ownership' => ['auto_own_suffix' => true, 'attribute' => null],
     'delegation' => ['enabled' => true],
     'versioning' => ['enabled' => true],
     'audit' => ['enabled' => false, 'decisions' => false],
-    'frontend' => ['enabled' => false],
+    'frontend' => [
+        'enabled' => false,
+        'access_user_permission' => null, // e.g. users.access
+    ],
     'debug' => ['enabled' => false],
     'filament' => ['enabled' => false],
     'testing' => ['allow_fake' => false],
+    'discovery' => ['enabled' => true, 'paths' => []],
 ];
 ```
 
@@ -728,8 +759,8 @@ return [
 | Always deny | `permission.enabled`, user trait, `permission:doctor` |
 | Tenant deny | `AuthorizationContext::tenant()` on the request; `teams.require_context` |
 | Stale allow after revoke | `permission:cache:clear`; confirm after-commit ran |
-| Wildcard too wide | Wildcards do not cross resources; prefer exact + deny |
-| Delegation not working | Delegator must `can()` the permission now; not expired; not self |
+| Wildcard too wide | `posts.*` stays on that resource but is deep; avoid bare `*`; prefer exact + deny |
+| Delegation not working | Delegator must `can()` the permission now; not expired; not self; no re-delegate from cover |
 | Fake in production | Blocked unless `testing.allow_fake` |
 | Explain 404 | `debug.enabled` is false (default) |
 | Frontend 404 | `frontend.enabled` is false (default) |
@@ -767,9 +798,9 @@ Request → Gate / middleware / $user->can()
 | `tenants` / `tenant_users` | Optional package tenants |
 | `permission_delegations` | Delegated access |
 | `permission_versions` | Snapshots |
-| `authorization_audits` | Append-only log |
+| `authorization_audits` | Append-only log (Eloquent-guarded; no soft delete) |
 
-Soft deletes: roles and permissions only.
+Soft deletes: roles and permissions only. Denial reasons include `PERMISSION_MISSING`, `ROLE_MISSING` (a role in the system grants it but this user lacks that role), `TENANT_MISMATCH`, `SCOPE_MISMATCH`, `CONDITION_FAILED`, `EXPIRED_PERMISSION`, `EXPLICIT_DENY`, `DELEGATION_EXPIRED`, `CONTEXT_MISSING`, and reserved `POLICY_DENIED` for host policy wiring.
 
 ### Events
 

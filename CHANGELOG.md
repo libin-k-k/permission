@@ -2,7 +2,7 @@
 
 All notable changes to `libinkk/permission` are documented here.
 
-## [1.0.0] — 2026-09-05
+## [1.0.0] - 2026-09-05
 
 Production release of the authorization engine (v0.1–v0.9 feature set + docs).
 
@@ -28,38 +28,38 @@ Production release of the authorization engine (v0.1–v0.9 feature set + docs).
 - v0.8 Debugger, graph, unused, CLI explain
 - v0.9 Redis L3 opt-in, bulk APIs, Octane/queue flush, UUID/ULID
 
-## [0.9.0] — 2026-09-05
+## [0.9.0] - 2026-09-05
 
 Redis L3 opt-in, `authorizeMany` / `permissionsFor` / `preloadAuthorization`, Octane and queue flush, UUID/ULID pivot keys, cache metrics.
 
-## [0.8.0] — 2026-09-05
+## [0.8.0] - 2026-09-05
 
 Authorization debugger, `permission:graph`, `permission:unused`, `permission:explain`, optional Telescope / DebugBar hooks.
 
-## [0.7.0] — 2026-09-04
+## [0.7.0] - 2026-09-04
 
 Optional Filament resource/page/widget/relation/tenant adapter (no Filament Composer dependency).
 
-## [0.6.0] — 2026-09-04
+## [0.6.0] - 2026-09-04
 
 Vue / React helpers, frontend payload, optional authorization API.
 
-## [0.5.0] — 2026-09-04
+## [0.5.0] - 2026-09-04
 
 Temporary access, delegation, audit logs, permission versioning.
 
-## [0.4.0] — 2026-09-03
+## [0.4.0] - 2026-09-03
 
 Multi-tenancy, hierarchical scopes, authorization context.
 
-## [0.3.0] — 2026-09-03
+## [0.3.0] - 2026-09-03
 
 Conditions, ownership, role hierarchy, explicit deny, explainable decisions.
 
-## [0.2.0] — 2026-09-02
+## [0.2.0] - 2026-09-02
 
 Resources, groups, wildcards, Artisan DX, discovery, doctor, user export.
 
-## [0.1.0] — 2026-09-01
+## [0.1.0] - 2026-09-01
 
 Roles, permissions, Gate, middleware, Blade, layered cache.

@@ -70,6 +70,8 @@ return [
         ],
         'immediate_invalidation' => true,
         'metrics' => true,
+        // Bump cache generation when permission tables mutate (covers raw DB::table bypasses).
+        'watch_db_mutations' => true,
     ],
 
     'middleware' => [

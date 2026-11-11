@@ -45,7 +45,7 @@ Review the published `config/permission.php`. New keys since early 0.x:
 
 ### UUID / ULID
 
-Set `permission.database.primary_key` **before** the first migrate. Changing key type on an existing database is not an automatic migration — export, recreate, re-import.
+Set `permission.database.primary_key` **before** the first migrate. Changing key type on an existing database is not an automatic migration – export, recreate, re-import.
 
 ### After upgrade
 

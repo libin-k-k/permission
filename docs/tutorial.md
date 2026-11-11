@@ -185,7 +185,7 @@ This page is the full tutorial for [libinkk/permission](https://www.libinkk.in/p
 
 The engine must answer one question, every time:
 
-> Is **this user** allowed to perform **this action** on **this resource**, in the **current tenant / scope**, under the **current conditions** — and **if not, why**?
+> Is **this user** allowed to perform **this action** on **this resource**, in the **current tenant / scope**, under the **current conditions** – and **if not, why**?
 
 ```php
 $user->can('invoice.approve', $invoice);
@@ -322,9 +322,9 @@ This is an engineering comparison, not an attack. Spatie, Bouncer, and Laratrust
 
 ### When to keep another package
 
-- You only need “user has role editor” and a few Blade `@role` checks — Spatie or Bouncer is enough.
-- Your rules are three methods on `PostPolicy` and will stay that small — use Laravel policies.
-- You already run Spatie and only want assignment screens — do not rewrite for fashion.
+- You only need “user has role editor” and a few Blade `@role` checks – Spatie or Bouncer is enough.
+- Your rules are three methods on `PostPolicy` and will stay that small – use Laravel policies.
+- You already run Spatie and only want assignment screens – do not rewrite for fashion.
 
 ### When this engine is the fit
 
@@ -332,7 +332,7 @@ This is an engineering comparison, not an attack. Spatie, Bouncer, and Laratrust
 - You must **explain** denials to support or compliance.
 - You need **delegation** and **expiry** without cloning roles.
 - You run **Octane** or queues and cannot leak tenant state.
-- You want one path for Blade, Vue, React, Filament, and the API — UI never grants.
+- You want one path for Blade, Vue, React, Filament, and the API – UI never grants.
 
 You can still call a Laravel policy **after** this engine if the host app wants both. `POLICY_DENIED` exists as a reason code; policies are not an automatic engine step in 1.0.
 
@@ -464,7 +464,7 @@ php artisan permission:graph
 $role->givePermissionTo('posts.delete');
 $meera->assignRole($role);
 $meera->denyPermissionTo('posts.delete');
-$meera->can('posts.delete'); // false — EXPLICIT_DENY
+$meera->can('posts.delete'); // false – EXPLICIT_DENY
 ```
 
 ### ABAC conditions
@@ -488,7 +488,7 @@ Permission::define('invoice.approve')->when('within_approval_limit');
 
 ```php
 $author->can('posts.update.own', $ownPost);   // true
-$author->can('posts.update.own', $otherPost); // false — RESOURCE_DENIED
+$author->can('posts.update.own', $otherPost); // false – RESOURCE_DENIED
 ```
 
 ### Multi-tenancy
@@ -763,7 +763,7 @@ php artisan permission:validate
 
 ## End-to-end tutorials
 
-### Tutorial A — Company blog (RBAC)
+### Tutorial A – Company blog (RBAC)
 
 **Story.** Acme marketing. Viewers read. Editors write. Admins delete and publish.
 
@@ -796,7 +796,7 @@ public function store(Request $request)
 
 `@can` hides the link. Middleware and `authorize()` are the grant check.
 
-### Tutorial B — Invoice desk (ABAC + delegation)
+### Tutorial B – Invoice desk (ABAC + delegation)
 
 **Story.** Rahul, Finance Manager, limit ₹50,000. Invoice #4821 is ₹1,25,000. Next week he delegates a **small** bill to Anika for 8 hours.
 
@@ -814,7 +814,7 @@ $small = Invoice::query()->create(['amount' => 20_000]);
 $large = Invoice::query()->create(['amount' => 125_000]);
 
 $rahul->can('invoice.approve', $small); // true
-$rahul->can('invoice.approve', $large); // false — CONDITION_FAILED
+$rahul->can('invoice.approve', $large); // false – CONDITION_FAILED
 
 $grant = $rahul->delegate(
     'invoice.approve',
@@ -829,7 +829,7 @@ $grant = $rahul->delegate(
 php artisan permission:explain 10 invoice.approve
 ```
 
-### Tutorial C — Two companies (tenants)
+### Tutorial C – Two companies (tenants)
 
 **Story.** Priya is editor in North and viewer in South.
 
@@ -850,7 +850,7 @@ $priya->can('posts.create'); // false
 
 Set tenant in HTTP middleware **and** in every queued job.
 
-### Tutorial D — HR salary column
+### Tutorial D – HR salary column
 
 **Story.** Managers see the employee list. Only HR sees salary.
 
@@ -868,7 +868,7 @@ return [
 
 Hiding a Filament column is not enough if the JSON still includes `salary`.
 
-### Tutorial E — Weekend auditor
+### Tutorial E – Weekend auditor
 
 ```php
 $auditor->givePermissionTo(
@@ -903,7 +903,7 @@ No. Polymorphic `user_type` / `user_id`.
 10–13, PHP 8.1+ as documented on this page.
 
 **How do I report a bad grant?**  
-libinkk1999@gmail.com — see [SECURITY.md](../SECURITY.md).
+libinkk1999@gmail.com – see [SECURITY.md](../SECURITY.md).
 
 ---
 

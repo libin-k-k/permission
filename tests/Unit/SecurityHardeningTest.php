@@ -109,8 +109,11 @@ class SecurityHardeningTest extends TestCase
         try {
             $manager->delegate('invoice.approve', to: $third, until: now()->addHour());
             $this->fail('Delegatee must not re-delegate.');
-        } catch (CannotDelegatePermissionException) {
-            $this->assertTrue(true);
+        } catch (CannotDelegatePermissionException $e) {
+            $this->assertSame(
+                CannotDelegatePermissionException::redelegate('invoice.approve')->getMessage(),
+                $e->getMessage()
+            );
         }
     }
 
@@ -295,10 +298,25 @@ class SecurityHardeningTest extends TestCase
 
         $audit = AuthorizationAudit::query()->first();
         $this->assertNotNull($audit);
-        $this->assertFalse($audit->delete());
-        $this->assertFalse($audit->forceDelete());
-        $this->assertFalse($audit->update(['reason' => 'tampered']));
-        $this->assertNotSame('tampered', $audit->fresh()->reason);
+        $reason = $audit->reason;
+
+        foreach (['delete', 'forceDelete'] as $method) {
+            try {
+                $audit->{$method}();
+                $this->fail("Audit {$method} must throw.");
+            } catch (\Libinkk\Permission\Exceptions\AuditImmutableException) {
+                $this->assertTrue(true);
+            }
+        }
+
+        try {
+            $audit->update(['reason' => 'tampered']);
+            $this->fail('Audit update must throw.');
+        } catch (\Libinkk\Permission\Exceptions\AuditImmutableException) {
+            $this->assertTrue(true);
+        }
+
+        $this->assertSame($reason, $audit->fresh()->reason);
     }
 
     public function test_frontend_payload_is_not_a_grant_and_guest_is_empty(): void

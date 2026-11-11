@@ -2,10 +2,13 @@
 
 namespace Libinkk\Permission\Tests\Unit;
 
+use Illuminate\Support\Facades\DB;
 use Libinkk\Permission\Audit\AuthorizationAudit;
+use Libinkk\Permission\Exceptions\AuditImmutableException;
 use Libinkk\Permission\Permissions\Permission;
 use Libinkk\Permission\Permissions\PermissionVersion;
 use Libinkk\Permission\Roles\Role;
+use Libinkk\Permission\Support\Tables;
 use Libinkk\Permission\Tests\TestCase;
 
 class AuditVersioningTest extends TestCase
@@ -103,8 +106,20 @@ class AuditVersioningTest extends TestCase
 
         $audit = AuthorizationAudit::query()->first();
         $this->assertNotNull($audit);
-        $this->assertFalse($audit->delete());
+
+        try {
+            $audit->delete();
+            $this->fail('Audit delete must throw.');
+        } catch (AuditImmutableException) {
+            $this->assertTrue(true);
+        }
+
         $this->assertSame($before, AuthorizationAudit::query()->count());
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+        DB::table(Tables::authorizationAudits())
+            ->where('id', $audit->getKey())
+            ->delete();
     }
 
     public function test_version_snapshot_exists_for_new_permissions(): void

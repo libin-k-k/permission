@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use Libinkk\Permission\Contracts\RoleRepository as RoleRepositoryContract;
 use Libinkk\Permission\Roles\Role;
 use Libinkk\Permission\Support\Tables;
+use Libinkk\Permission\Support\WildcardMatcher;
 
 class EloquentRoleRepository implements RoleRepositoryContract
 {
@@ -94,6 +95,34 @@ class EloquentRoleRepository implements RoleRepositoryContract
             ->unique(fn (array $row) => $row['name'].'|'.$row['effect'])
             ->values()
             ->all();
+    }
+
+    public function anyRoleGrants(string $permission, string $guard): bool
+    {
+        $roles = Tables::roles();
+        $permissions = Tables::permissions();
+        $rolePermissions = Tables::rolePermissions();
+
+        $patterns = DB::table($rolePermissions)
+            ->join($roles, "{$roles}.id", '=', "{$rolePermissions}.role_id")
+            ->join($permissions, "{$permissions}.id", '=', "{$rolePermissions}.permission_id")
+            ->where("{$roles}.guard_name", $guard)
+            ->where("{$roles}.is_active", true)
+            ->whereNull("{$roles}.deleted_at")
+            ->where("{$permissions}.is_active", true)
+            ->whereNull("{$permissions}.deleted_at")
+            ->where("{$rolePermissions}.effect", 'allow')
+            ->pluck("{$permissions}.name")
+            ->unique()
+            ->all();
+
+        foreach ($patterns as $pattern) {
+            if ($pattern === $permission || WildcardMatcher::matches((string) $pattern, $permission)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function findOrCreate(string $name, string $guard): array

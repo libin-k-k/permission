@@ -215,6 +215,20 @@ class PermissionResolver
     }
 
     /**
+     * True when at least one active role (for the guard) grants the ability via exact or wildcard allow.
+     */
+    public function anyRoleGrants(string $permission, string $guard): bool
+    {
+        $generation = (int) ($this->cache->get('generation') ?? 0);
+
+        return (bool) $this->cache->remember(
+            "role_grants:g{$generation}:{$guard}:{$permission}",
+            'roles',
+            fn () => $this->roles->anyRoleGrants($permission, $guard)
+        );
+    }
+
+    /**
      * Temporary grants must not live in L2 after they expire.
      */
     protected function hasExpiringAssignments(object $user): bool

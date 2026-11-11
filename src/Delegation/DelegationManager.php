@@ -53,6 +53,10 @@ class DelegationManager
         }
 
         if (! $this->userCurrentlyHolds($from, $model->name, $guard)) {
+            if ($this->activeFor($from, $model->name) !== null) {
+                throw CannotDelegatePermissionException::redelegate($model->name);
+            }
+
             throw CannotDelegatePermissionException::missing($model->name);
         }
 

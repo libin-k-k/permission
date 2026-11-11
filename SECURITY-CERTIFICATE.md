@@ -28,7 +28,7 @@ CI: [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 
 The PHP authorization engine may be used in production if the host app:
 
-- Treats Blade, Vue, React, and Filament as **UI only** — every write path is re-checked by Laravel → this package → ALLOW / DENY
+- Treats Blade, Vue, React, and Filament as **UI only** – every write path is re-checked by Laravel → this package → ALLOW / DENY
 - Pins a package commit
 - Enables tenant context on every request when teams are on
 - Leaves frontend APIs and decision audit off unless needed

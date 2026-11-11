@@ -25,4 +25,9 @@ class CannotDelegatePermissionException extends RuntimeException
     {
         return new self('Only the delegator can revoke a delegation.');
     }
+
+    public static function redelegate(string $permission): self
+    {
+        return new self("Cannot re-delegate [{$permission}]; delegated access cannot be passed on.");
+    }
 }

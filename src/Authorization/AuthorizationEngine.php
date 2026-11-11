@@ -6,6 +6,7 @@ use Libinkk\Permission\Cache\DecisionCache;
 use Libinkk\Permission\Cache\PermissionFake;
 use Libinkk\Permission\Conditions\ConditionResolver;
 use Libinkk\Permission\Contracts\AuthorizationEngine as AuthorizationEngineContract;
+use Libinkk\Permission\Contracts\RoleRepository;
 use Libinkk\Permission\Delegation\DelegationManager;
 use Libinkk\Permission\Permissions\PermissionResolver;
 use Libinkk\Permission\Scopes\ScopeResolver;
@@ -22,6 +23,7 @@ class AuthorizationEngine implements AuthorizationEngineContract
         protected ScopeResolver $scopes,
         protected DelegationManager $delegations,
         protected ExpirationChecker $expirations,
+        protected RoleRepository $roles,
     ) {
     }
 
@@ -176,7 +178,7 @@ class AuthorizationEngine implements AuthorizationEngineContract
         }
 
         if ($entry === null) {
-            $reason = $this->missingReason($user);
+            $reason = $this->missingReason($user, $permission, $guard);
 
             if ($this->expirations->expiredGrantExists($user, $permission, $guard)) {
                 $reason = DecisionReason::EXPIRED_PERMISSION;
@@ -382,22 +384,20 @@ class AuthorizationEngine implements AuthorizationEngineContract
         return (string) config('permission.default_guard', 'web');
     }
 
-    protected function missingReason(object $user): string
+    protected function missingReason(object $user, string $permission, string $guard): string
     {
-        if (! $this->scopes->teamsEnabled()) {
-            return DecisionReason::PERMISSION_MISSING;
+        if ($this->scopes->teamsEnabled()) {
+            $target = AuthorizationContext::currentTarget();
+
+            if ($target !== null && $this->scopes->userHasOtherTenantAssignments($user, $target)) {
+                return $this->scopes->isNestedScope($target)
+                    ? DecisionReason::SCOPE_MISMATCH
+                    : DecisionReason::TENANT_MISMATCH;
+            }
         }
 
-        $target = AuthorizationContext::currentTarget();
-
-        if ($target === null) {
-            return DecisionReason::PERMISSION_MISSING;
-        }
-
-        if ($this->scopes->userHasOtherTenantAssignments($user, $target)) {
-            return $this->scopes->isNestedScope($target)
-                ? DecisionReason::SCOPE_MISMATCH
-                : DecisionReason::TENANT_MISMATCH;
+        if ($this->roles->anyRoleGrants($permission, $guard)) {
+            return DecisionReason::ROLE_MISSING;
         }
 
         return DecisionReason::PERMISSION_MISSING;

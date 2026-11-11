@@ -4,7 +4,7 @@ Publish at: https://laravel.io/articles/create  (sign in with GitHub first)
 Articles are Markdown. Staff moderate before the post goes live.
 ================================================================================
 
-TITLE (paste into Title — keep it short; laravel.io uses huge hero type)
+TITLE (paste into Title – keep it short; laravel.io uses huge hero type)
 ------------------------------------------------------------------------
 Why Laravel Permissions Are Not Authorization
 

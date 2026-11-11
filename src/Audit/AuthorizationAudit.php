@@ -3,6 +3,7 @@
 namespace Libinkk\Permission\Audit;
 
 use Illuminate\Database\Eloquent\Model;
+use Libinkk\Permission\Exceptions\AuditImmutableException;
 use Libinkk\Permission\Support\Tables;
 use Libinkk\Permission\Support\UsesConfiguredKeys;
 
@@ -19,6 +20,17 @@ class AuthorizationAudit extends Model
         'created_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::updating(function () {
+            throw AuditImmutableException::cannotModify();
+        });
+
+        static::deleting(function () {
+            throw AuditImmutableException::cannotModify();
+        });
+    }
+
     public function getTable(): string
     {
         return Tables::authorizationAudits();
@@ -29,12 +41,12 @@ class AuthorizationAudit extends Model
      */
     public function delete(): bool
     {
-        return false;
+        throw AuditImmutableException::cannotModify();
     }
 
     public function forceDelete(): bool
     {
-        return false;
+        throw AuditImmutableException::cannotModify();
     }
 
     /**
@@ -43,6 +55,6 @@ class AuthorizationAudit extends Model
      */
     public function update(array $attributes = [], array $options = []): bool
     {
-        return false;
+        throw AuditImmutableException::cannotModify();
     }
 }

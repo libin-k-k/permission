@@ -26,6 +26,8 @@ interface PermissionCache
 
     public function flushRequestCache(): void;
 
+    public function registerMutationWatcher(): void;
+
     /**
      * Invalidate all generation-keyed authorization cache entries.
      */

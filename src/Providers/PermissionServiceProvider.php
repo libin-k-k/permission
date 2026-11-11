@@ -145,6 +145,7 @@ class PermissionServiceProvider extends ServiceProvider
         $this->registerFilament();
         $this->registerOctaneFlush();
         $this->registerQueueFlush();
+        $this->app->make(PermissionCacheContract::class)->registerMutationWatcher();
     }
 
     protected function registerBuiltinConditions(): void

@@ -8,6 +8,7 @@ use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Libinkk\Permission\Contracts\PermissionCache as PermissionCacheContract;
+use Libinkk\Permission\Support\Tables;
 use LogicException;
 use Throwable;
 
@@ -31,6 +32,10 @@ class PermissionCache implements PermissionCacheContract
      * @var array<string, true>
      */
     protected array $computing = [];
+
+    protected bool $watchingMutations = false;
+
+    protected bool $mutationWatcherRegistered = false;
 
     public function remember(string $key, string $ttlType, Closure $callback, bool $persistent = true): mixed
     {
@@ -193,6 +198,83 @@ class PermissionCache implements PermissionCacheContract
         $this->request = [];
         $this->dirty = [];
         $this->computing = [];
+    }
+
+    /**
+     * Invalidate authorization cache when permission tables are mutated outside package APIs
+     * (raw DB::table / SQL). Opt out with permission.cache.watch_db_mutations = false.
+     */
+    public function registerMutationWatcher(): void
+    {
+        if ($this->mutationWatcherRegistered || ! config('permission.cache.watch_db_mutations', true)) {
+            return;
+        }
+
+        $this->mutationWatcherRegistered = true;
+
+        DB::listen(function (object $query): void {
+            if ($this->watchingMutations) {
+                return;
+            }
+
+            $sql = (string) ($query->sql ?? '');
+
+            if ($sql === '' || ! $this->isMutatingSql($sql) || ! $this->touchesWatchedTables($sql)) {
+                return;
+            }
+
+            $this->watchingMutations = true;
+
+            try {
+                $this->bump('generation');
+            } finally {
+                $this->watchingMutations = false;
+            }
+        });
+    }
+
+    protected function isMutatingSql(string $sql): bool
+    {
+        return (bool) preg_match('/^\s*(insert|update|delete|replace)\b/i', $sql);
+    }
+
+    protected function touchesWatchedTables(string $sql): bool
+    {
+        $normalized = strtolower($sql);
+
+        foreach ($this->watchedTables() as $table) {
+            $needle = strtolower($table);
+
+            if ($needle !== '' && str_contains($normalized, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function watchedTables(): array
+    {
+        return [
+            Tables::roles(),
+            Tables::permissions(),
+            Tables::rolePermissions(),
+            Tables::userRoles(),
+            Tables::userPermissions(),
+            Tables::roleInheritances(),
+            Tables::permissionConditions(),
+            Tables::permissionConditionValues(),
+            Tables::scopes(),
+            Tables::roleScopes(),
+            Tables::permissionScopes(),
+            Tables::userScopes(),
+            Tables::tenants(),
+            Tables::tenantUsers(),
+            Tables::permissionDelegations(),
+        ];
     }
 
     public function clear(): void
