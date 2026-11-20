@@ -2,6 +2,12 @@
 
 All notable changes to `libinkk/permission` are documented here.
 
+## [1.1.2] - 2026-11-20
+
+### Added
+
+- Landscape README banner (`docs/images/libinkk-permission-banner.jpg`)
+
 ## [1.1.1] - 2026-11-20
 
 ### Added

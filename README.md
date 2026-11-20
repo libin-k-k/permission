@@ -1,6 +1,10 @@
 # libinkk/permission
 
-**v1.0** – production-grade Laravel authorization engine.
+<p align="center">
+  <img src="docs/images/libinkk-permission-banner.jpg" alt="libinkk/permission – Authorization that explains itself" width="100%">
+</p>
+
+**v1.1.2** – production-grade Laravel authorization engine.
 
 RBAC + ABAC + tenants + temporary access + delegation + explainable decisions + layered cache.
 
@@ -70,7 +74,7 @@ This is **not** a thin roles CRUD helper. Blade, Vue, React, and Filament are **
 | 12 | 8.2 – 8.5 |
 | 13 | 8.3 – 8.6 |
 
-Package version: `Libinkk\Permission\Version::VERSION` → **1.1.1**.
+Package version: `Libinkk\Permission\Version::VERSION` → **1.1.2**.
 
 CI: [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 
