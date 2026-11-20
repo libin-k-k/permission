@@ -70,7 +70,7 @@ This is **not** a thin roles CRUD helper. Blade, Vue, React, and Filament are **
 | 12 | 8.2 – 8.5 |
 | 13 | 8.3 – 8.6 |
 
-Package version: `Libinkk\Permission\Version::VERSION` → **1.0.0**.
+Package version: `Libinkk\Permission\Version::VERSION` → **1.1.1**.
 
 CI: [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 

@@ -2,6 +2,33 @@
 
 All notable changes to `libinkk/permission` are documented here.
 
+## [1.1.1] - 2026-11-20
+
+### Added
+
+- PHP 8.6 on the Laravel 13 CI matrix (verified locally with Docker)
+- README Laravel 13 compatibility range through PHP 8.6
+
+### Fixed
+
+- CI Composer installs for Laravel 10/11 blocked by Packagist security advisories (`audit.block-insecure` / `--no-security-blocking`)
+- Synced `Version::VERSION` with the published tag line
+
+## [1.1.0] - 2026-11-11
+
+### Added
+
+- `ROLE_MISSING` denial reason when a role grants the ability but the user lacks it
+- `CannotDelegatePermissionException::redelegate()` for explicit re-delegation rejects
+- DB triggers so `authorization_audits` cannot be updated/deleted (SQLite / MySQL / MariaDB / PostgreSQL)
+- `cache.watch_db_mutations` to bump cache generation on raw permission-table writes
+- Internet-known-issues regression tests
+
+### Changed
+
+- Audit Eloquent mutations throw `AuditImmutableException` (append-only)
+- README accuracy pass (Gate scope, wildcards, Blade, Artisan flags, config snippet)
+
 ## [1.0.0] - 2026-09-05
 
 Production release of the authorization engine (v0.1–v0.9 feature set + docs).
