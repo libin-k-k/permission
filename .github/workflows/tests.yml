@@ -58,8 +58,11 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # Laravel 10/11 framework releases are Packagist-advisory-blocked; CI still
+          # exercises those majors for package compatibility (EOL / security-only lanes).
+          composer config audit.block-insecure false
           composer require --no-update --dev "orchestra/testbench:${{ matrix.testbench }}"
-          composer update --prefer-dist --no-interaction --no-progress --with="illuminate/support:${{ matrix.laravel }}"
+          composer update --prefer-dist --no-interaction --no-progress --no-security-blocking --with="illuminate/support:${{ matrix.laravel }}"
 
       - name: Run PHPUnit
         run: vendor/bin/phpunit --no-coverage
